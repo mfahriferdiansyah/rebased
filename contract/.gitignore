@@ -29,6 +29,7 @@ keystore/
 node_modules/
 .yarn/
 .pnp.*
+lib/
 
 # IDE & Editors
 .vscode/
