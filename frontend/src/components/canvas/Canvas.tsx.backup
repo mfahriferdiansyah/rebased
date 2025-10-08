@@ -1,0 +1,161 @@
+import React, { useRef, useState, useCallback } from "react";
+import { Block } from "@/lib/types/blocks";
+import { Connection } from "@/lib/types/strategy";
+import { Grid } from "./Grid";
+import { BlockRenderer } from "../blocks/BlockRenderer";
+import { StartBlock } from "../blocks/StartBlock";
+import { EndBlock } from "../blocks/EndBlock";
+import { ConnectionLine } from "../connections/ConnectionLine";
+
+interface CanvasProps {
+  blocks: Block[];
+  connections: Connection[];
+  selectedBlockId?: string | null;
+  onBlockMove: (blockId: string, position: { x: number; y: number }) => void;
+  onBlockSelect: (blockId: string) => void;
+  onConnectionCreate?: (sourceId: string, targetId: string) => void;
+}
+
+export function Canvas({
+  blocks,
+  connections,
+  selectedBlockId,
+  onBlockMove,
+  onBlockSelect,
+}: CanvasProps) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [viewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [dragState, setDragState] = useState<{
+    blockId: string | null;
+    offset: { x: number; y: number };
+  }>({ blockId: null, offset: { x: 0, y: 0 } });
+
+  // Permanent blocks positions
+  const startBlock = {
+    id: "start-block",
+    position: { x: 50, y: 200 },
+    size: { width: 180, height: 120 },
+  };
+
+  const endBlock = {
+    id: "end-block",
+    position: { x: 1100, y: 200 },
+    size: { width: 180, height: 120 },
+  };
+
+  const handleMouseDown = useCallback(
+    (blockId: string, event: React.MouseEvent) => {
+      // Don't allow dragging permanent blocks
+      if (blockId === "start-block" || blockId === "end-block") {
+        onBlockSelect(blockId);
+        return;
+      }
+
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block) return;
+
+      const offset = {
+        x: event.clientX - block.position.x * viewport.zoom,
+        y: event.clientY - block.position.y * viewport.zoom,
+      };
+
+      setDragState({ blockId, offset });
+      onBlockSelect(blockId);
+    },
+    [blocks, viewport.zoom, onBlockSelect]
+  );
+
+  const handleMouseMove = useCallback(
+    (event: React.MouseEvent) => {
+      if (!dragState.blockId) return;
+
+      const newX = (event.clientX - dragState.offset.x) / viewport.zoom;
+      const newY = (event.clientY - dragState.offset.y) / viewport.zoom;
+
+      onBlockMove(dragState.blockId, { x: newX, y: newY });
+    },
+    [dragState, viewport.zoom, onBlockMove]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    setDragState({ blockId: null, offset: { x: 0, y: 0 } });
+  }, []);
+
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Deselect if clicking on canvas background
+      if (e.target === canvasRef.current) {
+        onBlockSelect("");
+      }
+    },
+    [onBlockSelect]
+  );
+
+  return (
+    <div
+      ref={canvasRef}
+      className="relative w-full h-full bg-white overflow-hidden"
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onClick={handleCanvasClick}
+    >
+      {/* Grid background */}
+      <Grid zoom={viewport.zoom} />
+
+      {/* SVG layer for connections */}
+      <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+        {/* Permanent START -> END connection */}
+        <path
+          d={`M ${startBlock.position.x + startBlock.size.width} ${startBlock.position.y + startBlock.size.height / 2}
+              L ${endBlock.position.x} ${endBlock.position.y + endBlock.size.height / 2}`}
+          fill="none"
+          stroke="#D1D5DB"
+          strokeWidth="2"
+          strokeDasharray="5,5"
+          strokeLinecap="round"
+        />
+
+        {connections.map((connection) => (
+          <ConnectionLine
+            key={connection.id}
+            connection={connection}
+            blocks={blocks}
+            zoom={viewport.zoom}
+          />
+        ))}
+      </svg>
+
+      {/* Permanent Blocks */}
+      <div className="absolute inset-0" style={{ zIndex: 2 }}>
+        <StartBlock
+          position={startBlock.position}
+          size={startBlock.size}
+          zoom={viewport.zoom}
+          isSelected={selectedBlockId === "start-block"}
+          onMouseDown={(e) => handleMouseDown("start-block", e)}
+        />
+        <EndBlock
+          position={endBlock.position}
+          size={endBlock.size}
+          zoom={viewport.zoom}
+          isSelected={selectedBlockId === "end-block"}
+          onMouseDown={(e) => handleMouseDown("end-block", e)}
+        />
+      </div>
+
+      {/* User Blocks layer */}
+      <div className="absolute inset-0" style={{ zIndex: 2 }}>
+        {blocks.map((block) => (
+          <BlockRenderer
+            key={block.id}
+            block={block}
+            zoom={viewport.zoom}
+            isSelected={block.id === selectedBlockId}
+            onMouseDown={(e) => handleMouseDown(block.id, e)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
