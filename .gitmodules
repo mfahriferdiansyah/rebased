@@ -1,0 +1,3 @@
+[submodule "contract/lib/delegation-framework"]
+	path = contract/lib/delegation-framework
+	url = https://github.com/metamask/delegation-framework

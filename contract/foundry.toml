@@ -10,6 +10,7 @@ remappings = [
     '@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/',
     '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
     '@pythnetwork/pyth-sdk-solidity/=lib/pyth-sdk-solidity/',
+    '@delegation-framework/=lib/delegation-framework/src/',
     'forge-std/=lib/forge-std/src/'
 ]
 # Allow deployment JSON writes

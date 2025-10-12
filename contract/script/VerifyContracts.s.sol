@@ -146,7 +146,7 @@ contract VerifyContracts is Script {
         console.log("# Regular Contracts");
         console.log(
             string.concat(
-                prefix, " ", vm.toString(delegationManager), " src/delegation/DelegationManager.sol:DelegationManager"
+                prefix, " ", vm.toString(delegationManager), " @delegation-framework/DelegationManager.sol:DelegationManager"
             )
         );
         console.log(
@@ -227,7 +227,7 @@ contract VerifyContracts is Script {
         console.log("# Regular Contracts");
         console.log(
             string.concat(
-                prefix, " ", vm.toString(delegationManager), " src/delegation/DelegationManager.sol:DelegationManager"
+                prefix, " ", vm.toString(delegationManager), " @delegation-framework/DelegationManager.sol:DelegationManager"
             )
         );
         console.log(

@@ -11,22 +11,25 @@ import "./interfaces/IPythOracle.sol";
 import "./interfaces/IUniswapHelper.sol";
 import "./interfaces/IRebalancerConfig.sol";
 import "./delegation/interfaces/IDelegationManager.sol";
+import { Delegation, ModeCode } from "@delegation-framework/utils/Types.sol";
 import "./delegation/types/DelegationTypes.sol";
 
 /**
  * @title RebalanceExecutor
  * @notice Executes portfolio rebalances via MetaMask DelegationManager
- * @dev Non-custodial: All swaps execute from user's MetaMask account
+ * @dev SMART ACCOUNT ONLY: All rebalances execute from MetaMask DeleGator accounts
  *
  * Flow:
  * 1. Bot calls rebalance(userAccount, strategyId, delegation)
  * 2. Read strategy from StrategyRegistry
- * 3. Calculate swaps using StrategyLibrary
- * 4. Build swap calldata for each swap
- * 5. Execute via DelegationManager.redeemDelegations()
- * 6. DelegationManager calls user's DeleGator.execute()
- * 7. Swaps happen IN user's MetaMask account
- * 8. Bot receives gas reimbursement
+ * 3. Validate userAccount is a DeleGator smart account
+ * 4. Verify DeleGator owner matches strategy owner
+ * 5. Calculate swaps using StrategyLibrary
+ * 6. Build swap calldata for each swap
+ * 7. Execute via DelegationManager.redeemDelegations()
+ * 8. DelegationManager calls DeleGator.executeFromExecutor()
+ * 9. Swaps happen IN the DeleGator (funds stay in smart account)
+ * 10. Bot receives gas reimbursement
  */
 contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     IDelegationManager public delegationManager;
@@ -62,6 +65,8 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     error SwapsDidNotImproveAllocation();
     error BalanceValidationFailed();
     error ContractPaused();
+    error NotADeleGator();
+    error InvalidDeleGatorOwner();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -180,12 +185,23 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         bytes[] calldata swapCallDatas,
         uint256[] calldata minOutputAmounts,
         bytes[] calldata permissionContexts,
-        bytes32[] calldata modes
+        ModeCode[] calldata modes
     ) external payable nonReentrant whenNotPaused {
         // 1. Get strategy from registry
         StrategyLibrary.Strategy memory strategy = registry.getStrategy(userAccount, strategyId);
 
-        // 2. Validate strategy
+        // 2. Validate userAccount is a DeleGator smart account
+        if (!DelegationTypes.isDeleGator(userAccount)) {
+            revert NotADeleGator();
+        }
+
+        // 3. Verify strategy owner matches DeleGator owner (security check)
+        address delegatorOwner = DelegationTypes.getDeleGatorOwner(userAccount);
+        if (delegatorOwner == address(0) || delegatorOwner != strategy.owner) {
+            revert InvalidDeleGatorOwner();
+        }
+
+        // 4. Validate strategy
         if (!strategy.isActive) {
             revert StrategyNotActive();
         }
@@ -194,21 +210,21 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
             revert TooSoonToRebalance();
         }
 
-        // 3. Calculate current drift and portfolio value BEFORE swaps
+        // 5. Calculate current drift and portfolio value BEFORE swaps
         uint256[] memory currentWeightsBefore =
-            StrategyLibrary.calculateCurrentWeights(strategy.tokens, userAccount, address(oracle));
+            StrategyLibrary.calculateCurrentWeights(userAccount, strategy.tokens, address(oracle));
         uint256 drift = StrategyLibrary.calculateDrift(currentWeightsBefore, strategy.weights);
 
         // SECURITY FIX HIGH-3: Store portfolio value before swaps
-        uint256 portfolioValueBefore = StrategyLibrary.getPortfolioValue(strategy.tokens, userAccount, address(oracle));
+        uint256 portfolioValueBefore = StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
 
-        // 4. Check drift exceeds threshold
+        // 6. Check drift exceeds threshold
         uint256 maxDrift = config.getMaxAllocationDrift();
         if (drift < maxDrift) {
             revert DriftBelowThreshold();
         }
 
-        // 5. Validate swap data
+        // 7. Validate swap data
         require(swapTargets.length == swapCallDatas.length, "Swap arrays length mismatch");
         require(swapTargets.length == minOutputAmounts.length, "Min output amounts length mismatch");
         require(swapTargets.length > 0, "No swaps provided");
@@ -227,7 +243,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
             }
         }
 
-        // 6. Build execution calldata for each swap
+        // 8. Build execution calldata for each swap
         // Bot provides pre-calculated optimal routes from DEX aggregators
         bytes[] memory executionCallDatas = new bytes[](swapTargets.length);
 
@@ -237,11 +253,11 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 abi.encodeWithSignature("execute(address,uint256,bytes)", swapTargets[i], 0, swapCallDatas[i]);
         }
 
-        // 7. Execute via DelegationManager
+        // 9. Execute via DelegationManager
         try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
             // SECURITY FIX HIGH-3 & HIGH-5: Validate swaps improved allocation
             uint256[] memory currentWeightsAfter =
-                StrategyLibrary.calculateCurrentWeights(strategy.tokens, userAccount, address(oracle));
+                StrategyLibrary.calculateCurrentWeights(userAccount, strategy.tokens, address(oracle));
             uint256 driftAfter = StrategyLibrary.calculateDrift(currentWeightsAfter, strategy.weights);
 
             // Drift should be reduced after rebalancing
@@ -251,7 +267,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
 
             // SECURITY FIX HIGH-3: Portfolio value should not decrease significantly (allowing for slippage)
             uint256 portfolioValueAfter =
-                StrategyLibrary.getPortfolioValue(strategy.tokens, userAccount, address(oracle));
+                StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
             uint256 maxSlippageBps = config.getMaxSlippage();
             uint256 minAcceptableValue = (portfolioValueBefore * (10000 - maxSlippageBps)) / 10000;
 
@@ -259,10 +275,10 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 revert BalanceValidationFailed();
             }
 
-            // 8. Update strategy last rebalance time
+            // 10. Update strategy last rebalance time
             registry.updateLastRebalanceTime(userAccount, strategyId);
 
-            // 9. Calculate gas reimbursement
+            // 11. Calculate gas reimbursement
             uint256 gasReimbursed = msg.value;
 
             emit RebalanceExecuted(userAccount, strategyId, block.timestamp, drift, gasReimbursed);
@@ -293,7 +309,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 return (false, 0);
             }
 
-            try StrategyLibrary.calculateCurrentWeights(strategy.tokens, userAccount, address(oracle)) returns (
+            try StrategyLibrary.calculateCurrentWeights(userAccount, strategy.tokens, address(oracle)) returns (
                 uint256[] memory currentWeights
             ) {
                 drift = StrategyLibrary.calculateDrift(currentWeights, strategy.weights);
@@ -315,7 +331,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      */
     function getPortfolioValue(address userAccount, uint256 strategyId) external view returns (uint256 valueUSD) {
         try registry.getStrategy(userAccount, strategyId) returns (StrategyLibrary.Strategy memory strategy) {
-            return StrategyLibrary.getPortfolioValue(strategy.tokens, userAccount, address(oracle));
+            return StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
         } catch {
             return 0;
         }

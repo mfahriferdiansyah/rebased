@@ -44,6 +44,8 @@ model Strategy {
   strategyLogic     Json?       // Complete canvas strategy (blocks, connections, metadata)
   version           String      @default("1.0") // Strategy schema version
   isActive          Boolean     @default(true)
+  isDeployed        Boolean     @default(false) // Whether deployed to StrategyRegistry
+  deployTxHash      String?     // Deployment transaction hash
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
@@ -56,6 +58,7 @@ model Strategy {
   @@index([userAddress])
   @@index([chainId])
   @@index([isActive])
+  @@index([isDeployed])
   @@map("strategies")
 }
 

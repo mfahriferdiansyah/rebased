@@ -5,17 +5,19 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./libraries/StrategyLibrary.sol";
+import "./delegation/types/DelegationTypes.sol";
 
 /**
  * @title StrategyRegistry
- * @notice Shared registry for all user strategies (non-custodial)
- * @dev Users create strategies here, funds stay in their MetaMask accounts
+ * @notice Shared registry for all DeleGator smart account strategies (non-custodial)
+ * @dev SMART ACCOUNT ONLY: All strategies must use MetaMask DeleGator accounts
  *
  * Architecture:
- * - ONE shared registry for ALL users
- * - Each user can have MULTIPLE strategies
- * - Data isolated by mapping: user address => strategy ID => strategy
- * - No custody: funds never leave user's MetaMask account
+ * - ONE shared registry for ALL DeleGators
+ * - Each DeleGator can have MULTIPLE strategies
+ * - Data isolated by mapping: DeleGator address => strategy ID => strategy
+ * - No custody: funds stay in DeleGator smart accounts
+ * - Owner verification: EOA that owns the DeleGator must approve strategy creation
  */
 contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     using StrategyLibrary for StrategyLibrary.Strategy;
@@ -34,14 +36,19 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
 
     // Events
     event StrategyCreated(
-        address indexed user, uint256 indexed strategyId, string name, address[] tokens, uint256[] weights
+        address indexed delegator,
+        address indexed owner,
+        uint256 indexed strategyId,
+        string name,
+        address[] tokens,
+        uint256[] weights
     );
-    event StrategyUpdated(address indexed user, uint256 indexed strategyId, address[] tokens, uint256[] weights);
-    event StrategyPaused(address indexed user, uint256 indexed strategyId);
-    event StrategyResumed(address indexed user, uint256 indexed strategyId);
-    event StrategyDeleted(address indexed user, uint256 indexed strategyId);
+    event StrategyUpdated(address indexed delegator, uint256 indexed strategyId, address[] tokens, uint256[] weights);
+    event StrategyPaused(address indexed delegator, uint256 indexed strategyId);
+    event StrategyResumed(address indexed delegator, uint256 indexed strategyId);
+    event StrategyDeleted(address indexed delegator, uint256 indexed strategyId);
     event RebalanceExecutorUpdated(address indexed oldExecutor, address indexed newExecutor);
-    event LastRebalanceTimeUpdated(address indexed user, uint256 indexed strategyId, uint256 timestamp);
+    event LastRebalanceTimeUpdated(address indexed delegator, uint256 indexed strategyId, uint256 timestamp);
 
     // Errors
     error StrategyAlreadyExists();
@@ -49,6 +56,8 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
     error InvalidStrategyId();
     error OnlyStrategyOwner();
     error OnlyRebalanceExecutor();
+    error NotADeleGator();
+    error NotAuthorized();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -76,22 +85,41 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
     }
 
     /**
-     * @notice Create a new strategy
+     * @notice Create a new strategy for a DeleGator smart account
+     * @param delegator DeleGator smart account address (must be a MetaMask DeleGator)
      * @param strategyId Unique ID for this strategy (user-defined)
      * @param tokens Token addresses in strategy
      * @param weights Token weights in basis points (must sum to 10000)
      * @param rebalanceInterval Minimum seconds between rebalances
      * @param name Human-readable name
+     *
+     * @dev SMART ACCOUNT ONLY: delegator must be a MetaMask DeleGator
+     *      Authorization: Either the DeleGator owner (EOA) or contract owner (backend) can create
      */
     function createStrategy(
+        address delegator,
         uint256 strategyId,
         address[] calldata tokens,
         uint256[] calldata weights,
         uint256 rebalanceInterval,
         string calldata name
     ) external {
+        // CRITICAL: Validate delegator is a DeleGator smart account
+        if (!DelegationTypes.isDeleGator(delegator)) {
+            revert NotADeleGator();
+        }
+
+        // Get the EOA owner of the DeleGator
+        address delegatorOwner = DelegationTypes.getDeleGatorOwner(delegator);
+        require(delegatorOwner != address(0), "Invalid DeleGator owner");
+
+        // Authorization: Either the owner EOA or contract owner (backend) can create
+        if (msg.sender != delegatorOwner && msg.sender != owner()) {
+            revert NotAuthorized();
+        }
+
         // Check strategy doesn't already exist
-        if (strategies[msg.sender][strategyId].id != 0 || strategies[msg.sender][strategyId].tokens.length > 0) {
+        if (strategies[delegator][strategyId].id != 0 || strategies[delegator][strategyId].tokens.length > 0) {
             revert StrategyAlreadyExists();
         }
 
@@ -101,8 +129,10 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
         require(bytes(name).length > 0, "Invalid name");
 
         // Create strategy
-        strategies[msg.sender][strategyId] = StrategyLibrary.Strategy({
+        strategies[delegator][strategyId] = StrategyLibrary.Strategy({
             id: strategyId,
+            owner: delegatorOwner,
+            delegator: delegator,
             tokens: tokens,
             weights: weights,
             rebalanceInterval: rebalanceInterval,
@@ -112,23 +142,34 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
         });
 
         // Track strategy ID
-        userStrategyIds[msg.sender].push(strategyId);
-        userStrategyCount[msg.sender]++;
+        userStrategyIds[delegator].push(strategyId);
+        userStrategyCount[delegator]++;
 
-        emit StrategyCreated(msg.sender, strategyId, name, tokens, weights);
+        emit StrategyCreated(delegator, delegatorOwner, strategyId, name, tokens, weights);
     }
 
     /**
      * @notice Update an existing strategy
+     * @param delegator DeleGator address
      * @param strategyId Strategy ID to update
      * @param tokens New token addresses
      * @param weights New token weights
      */
-    function updateStrategy(uint256 strategyId, address[] calldata tokens, uint256[] calldata weights) external {
-        StrategyLibrary.Strategy storage strategy = strategies[msg.sender][strategyId];
+    function updateStrategy(
+        address delegator,
+        uint256 strategyId,
+        address[] calldata tokens,
+        uint256[] calldata weights
+    ) external {
+        StrategyLibrary.Strategy storage strategy = strategies[delegator][strategyId];
 
         if (strategy.id == 0 && strategy.tokens.length == 0) {
             revert StrategyNotFound();
+        }
+
+        // Authorization: Only owner or contract owner
+        if (msg.sender != strategy.owner && msg.sender != owner()) {
+            revert NotAuthorized();
         }
 
         // Validate new parameters
@@ -138,57 +179,75 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
         strategy.tokens = tokens;
         strategy.weights = weights;
 
-        emit StrategyUpdated(msg.sender, strategyId, tokens, weights);
+        emit StrategyUpdated(delegator, strategyId, tokens, weights);
     }
 
     /**
      * @notice Pause a strategy (stops rebalancing)
+     * @param delegator DeleGator address
      * @param strategyId Strategy ID to pause
      */
-    function pauseStrategy(uint256 strategyId) external {
-        StrategyLibrary.Strategy storage strategy = strategies[msg.sender][strategyId];
+    function pauseStrategy(address delegator, uint256 strategyId) external {
+        StrategyLibrary.Strategy storage strategy = strategies[delegator][strategyId];
 
         if (strategy.id == 0 && strategy.tokens.length == 0) {
             revert StrategyNotFound();
+        }
+
+        // Authorization: Only owner or contract owner
+        if (msg.sender != strategy.owner && msg.sender != owner()) {
+            revert NotAuthorized();
         }
 
         strategy.isActive = false;
 
-        emit StrategyPaused(msg.sender, strategyId);
+        emit StrategyPaused(delegator, strategyId);
     }
 
     /**
      * @notice Resume a paused strategy
+     * @param delegator DeleGator address
      * @param strategyId Strategy ID to resume
      */
-    function resumeStrategy(uint256 strategyId) external {
-        StrategyLibrary.Strategy storage strategy = strategies[msg.sender][strategyId];
+    function resumeStrategy(address delegator, uint256 strategyId) external {
+        StrategyLibrary.Strategy storage strategy = strategies[delegator][strategyId];
 
         if (strategy.id == 0 && strategy.tokens.length == 0) {
             revert StrategyNotFound();
+        }
+
+        // Authorization: Only owner or contract owner
+        if (msg.sender != strategy.owner && msg.sender != owner()) {
+            revert NotAuthorized();
         }
 
         strategy.isActive = true;
 
-        emit StrategyResumed(msg.sender, strategyId);
+        emit StrategyResumed(delegator, strategyId);
     }
 
     /**
      * @notice Delete a strategy
+     * @param delegator DeleGator address
      * @param strategyId Strategy ID to delete
      */
-    function deleteStrategy(uint256 strategyId) external {
-        StrategyLibrary.Strategy storage strategy = strategies[msg.sender][strategyId];
+    function deleteStrategy(address delegator, uint256 strategyId) external {
+        StrategyLibrary.Strategy storage strategy = strategies[delegator][strategyId];
 
         if (strategy.id == 0 && strategy.tokens.length == 0) {
             revert StrategyNotFound();
         }
 
+        // Authorization: Only owner or contract owner
+        if (msg.sender != strategy.owner && msg.sender != owner()) {
+            revert NotAuthorized();
+        }
+
         // Delete strategy
-        delete strategies[msg.sender][strategyId];
+        delete strategies[delegator][strategyId];
 
         // Remove from ID array
-        uint256[] storage ids = userStrategyIds[msg.sender];
+        uint256[] storage ids = userStrategyIds[delegator];
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] == strategyId) {
                 ids[i] = ids[ids.length - 1];
@@ -197,9 +256,9 @@ contract StrategyRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable 
             }
         }
 
-        userStrategyCount[msg.sender]--;
+        userStrategyCount[delegator]--;
 
-        emit StrategyDeleted(msg.sender, strategyId);
+        emit StrategyDeleted(delegator, strategyId);
     }
 
     /**

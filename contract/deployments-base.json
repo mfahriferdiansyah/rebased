@@ -1,20 +1,20 @@
 {
   "base": {
-    "pythOracle": "0xEED2111eD81c70f4A5cd903626201b7A8E811146",
-    "pythOracleImpl": "0x577532DE03349AA8713993AB1bcd68B078CCD382",
-    "rebalancerConfig": "0x7E25cfE3d48FF4f89a818bBcf61AD6B2f3636c7C",
-    "rebalancerConfigImpl": "0xBF6ddb87Ec7Fbac3c97f613A70448f3aefB63778",
-    "uniswapHelper": "0x851b58631b7B16CDf0aAF6eDEd5f22Cd50d243DE",
-    "uniswapHelperImpl": "0x563dFdA1a509cd75415bf3b0c8189ebA6C6079e0",
-    "delegationManager": "0xDE6E87032590693Aa1Df4fb5a9617A81EE5dee89",
-    "allowedTargetsEnforcer": "0x4B4C305928265C2f28B90265ccc4e2517Ee6889b",
-    "allowedMethodsEnforcer": "0xB051e91CcDC5D565f4b091fD70EC78d931dCBc50",
-    "timestampEnforcer": "0xb4622b8Ccaba8F532CFb97BAB76904084eD439f8",
-    "limitedCallsEnforcer": "0x61f1b0D08D54de11B9E91881d0b201402623e6cC",
-    "nativeTokenPaymentEnforcer": "0x690587bF1584cFCe1C4142EA381CAE83535345b4",
-    "strategyRegistry": "0xc4F2bA997bA17c778A274708419824039E0E1d54",
-    "strategyRegistryImpl": "0x167123B6fD2275AC0c50959Dcd67Eba127f5F988",
-    "rebalanceExecutor": "0xb9AA46579c920693Ac639A53A8ee043d5DA5Eaf5",
-    "rebalanceExecutorImpl": "0x3a8075A29E390F96582b64d75A19425709B4FdD4"
+    "pythOracle": "0xe21e88f31a639d661e2d50D3c9E5DF1B1E3acff2",
+    "pythOracleImpl": "0xA4b66F0f03184E8F4696Fe72768D94254ae877F1",
+    "rebalancerConfig": "0xD400213B52fb241a49C36e6FC113725c2807A978",
+    "rebalancerConfigImpl": "0x847785c1C7cCFC49d6fDc6Af97f98882e00A0B11",
+    "uniswapHelper": "0xDcC32eDE3a3588E12Cf4Ef0Afe4407225aD70c63",
+    "uniswapHelperImpl": "0x01099E3E3F2a4CCbFAE2C6204516E48C392A8a0E",
+    "delegationManager": "0x7c182Db65D653E5eD5424Ed77928917387E83D17",
+    "allowedTargetsEnforcer": "0x4Cf4c6c50d9D381d6fCa43bc726A7F3c762618eA",
+    "allowedMethodsEnforcer": "0x3f1642f2F46fDA6427024e072C91aB248B3C2046",
+    "timestampEnforcer": "0xDa2Dde9627f4D0dE17A332AbE03AAE4d3DC673a3",
+    "limitedCallsEnforcer": "0xf93Ff27353aFB59bECea4DA1f3cF5ba156506838",
+    "nativeTokenPaymentEnforcer": "0x1b935946Bf1509cC4B3f159C02cea738E7EdAd82",
+    "strategyRegistry": "0xf48bBD37096fE7C1bAC6694d54E6a887861E3855",
+    "strategyRegistryImpl": "0x79A63F0569DBc5f9D85FdE6474f380C9497Bdef3",
+    "rebalanceExecutor": "0x2cd47f7Cf22594fD1f40AA1b1F3C9a0c1d585BaC",
+    "rebalanceExecutorImpl": "0xBF03ee8f3cBfb0a65E7582C7443f3728b23c1845"
   }
 }

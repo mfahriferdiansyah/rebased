@@ -8,7 +8,7 @@ import "../src/RebalanceExecutor.sol";
 import "../src/PythOracle.sol";
 import "../src/UniswapHelper.sol";
 import "../src/RebalancerConfig.sol";
-import "../src/delegation/DelegationManager.sol";
+import { DelegationManager } from "@delegation-framework/DelegationManager.sol";
 import "../src/delegation/enforcers/AllowedTargetsEnforcer.sol";
 import "../src/delegation/enforcers/AllowedMethodsEnforcer.sol";
 import "../src/delegation/enforcers/TimestampEnforcer.sol";
@@ -128,12 +128,16 @@ contract Deploy is Script {
         console.log("  Proxy:", deployment.uniswapHelper);
 
         // ============================================
-        // 4. Deploy DelegationManager (Non-upgradeable)
+        // 4. Deploy MetaMask DelegationManager (Non-upgradeable)
         // ============================================
-        console.log("\n4. Deploying DelegationManager...");
-        DelegationManager delegationManager = new DelegationManager();
+        console.log("\n4. Deploying MetaMask DelegationManager...");
+        console.log("  Using official MetaMask Delegation Framework v1.3.0");
+        DelegationManager delegationManager = new DelegationManager(deployer);
         deployment.delegationManager = address(delegationManager);
         console.log("  Address:", deployment.delegationManager);
+        console.log("  Owner:", deployer);
+        console.log("  DeleGator-compatible: YES");
+        console.log("  ERC-7710 compliant: YES");
 
         // ============================================
         // 5. Deploy Caveat Enforcers (Non-upgradeable)

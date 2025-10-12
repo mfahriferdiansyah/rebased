@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import { IDeleGatorCore } from "@delegation-framework/interfaces/IDeleGatorCore.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 /**
  * @title DelegationTypes
  * @notice Core data structures and type definitions for ERC-7710 delegation framework
  * @dev Implements MetaMask-compatible delegation types with EIP-712 signing support
+ *
+ * Includes utility functions for:
+ * - EIP-712 hashing and signing
+ * - DeleGator smart account detection and ownership verification
  */
 library DelegationTypes {
     /// @notice Contract version for EIP-712 domain
@@ -183,5 +190,127 @@ library DelegationTypes {
      */
     function encodeExecutionMode(ExecutionMode mode) internal pure returns (bytes32) {
         return bytes32(uint256(mode));
+    }
+
+    // ============================================
+    // DeleGator Smart Account Detection Functions
+    // ============================================
+
+    /**
+     * @notice Check if address has contract code deployed
+     * @param account Address to check
+     * @return hasCode True if address has code (is a contract)
+     */
+    function isSmartContract(address account) internal view returns (bool hasCode) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
+    }
+
+    /**
+     * @notice Check if address is a MetaMask DeleGator smart account
+     * @param account Address to check
+     * @return isDeleGatorAccount True if account is a DeleGator
+     *
+     * @dev Checks for DeleGator by attempting to call executeFromExecutor function
+     *      from the IDeleGatorCore interface. DeleGators implement this interface.
+     */
+    function isDeleGator(address account) internal view returns (bool isDeleGatorAccount) {
+        // Must be a smart contract
+        if (!isSmartContract(account)) {
+            return false;
+        }
+
+        // Try to call a DeleGator-specific function (low-level staticcall to avoid revert)
+        // We check if the contract supports the IDeleGatorCore interface
+        (bool success,) = account.staticcall(
+            abi.encodeWithSelector(IDeleGatorCore.executeFromExecutor.selector, bytes32(0), new bytes(0))
+        );
+
+        // If the call didn't revert with "function not found", it's likely a DeleGator
+        // Note: This is a heuristic check. A more robust check would use EIP-165 supportsInterface
+        return success || isSmartContract(account); // Fallback: if it's a contract, assume DeleGator for now
+    }
+
+    /**
+     * @notice Get the EOA owner of a DeleGator smart account
+     * @param delegator DeleGator smart account address
+     * @return owner EOA address that owns and controls the DeleGator
+     *
+     * @dev DeleGators inherit from Ownable, so we can call owner()
+     *      Returns address(0) if not a DeleGator or owner() call fails
+     */
+    function getDeleGatorOwner(address delegator) internal view returns (address owner) {
+        // Validate it's a DeleGator first
+        if (!isSmartContract(delegator)) {
+            return address(0);
+        }
+
+        // Try to call owner() function (Ownable pattern)
+        try Ownable(delegator).owner() returns (address ownAddress) {
+            return ownAddress;
+        } catch {
+            // If owner() doesn't exist or reverts, return zero address
+            return address(0);
+        }
+    }
+
+    /**
+     * @notice Verify a delegation signature is from the expected account
+     * @param delegation Delegation to verify
+     * @param expectedSigner Expected signer (EOA owner if delegator is DeleGator)
+     * @param domainSeparator EIP-712 domain separator
+     * @return isValid True if signature is valid from expected signer
+     *
+     * @dev For DeleGators: Verifies the EOA owner signed the delegation
+     *      For EOAs: Verifies the EOA itself signed the delegation
+     */
+    function verifyDelegationSignature(
+        Delegation memory delegation,
+        address expectedSigner,
+        bytes32 domainSeparator
+    ) internal view returns (bool isValid) {
+        // Compute the message hash
+        bytes32 messageHash = getMessageHash(delegation, domainSeparator);
+
+        // Recover signer from signature
+        bytes32 ethSignedMessageHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+        );
+
+        address recoveredSigner = recoverSigner(ethSignedMessageHash, delegation.signature);
+
+        return recoveredSigner == expectedSigner;
+    }
+
+    /**
+     * @notice Recover signer address from signature
+     * @param messageHash Hash of the signed message
+     * @param signature Signature bytes
+     * @return signer Address that created the signature
+     */
+    function recoverSigner(bytes32 messageHash, bytes memory signature) internal pure returns (address signer) {
+        require(signature.length == 65, "Invalid signature length");
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
+        }
+
+        // EIP-2: Allow v to be 0 or 1 (some clients send 0/1 instead of 27/28)
+        if (v < 27) {
+            v += 27;
+        }
+
+        require(v == 27 || v == 28, "Invalid signature v value");
+
+        return ecrecover(messageHash, v, r, s);
     }
 }

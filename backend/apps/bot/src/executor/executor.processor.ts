@@ -10,6 +10,9 @@ import { DexService } from '../dex/dex.service';
 import { GasService } from '../gas/gas.service';
 import { MevService } from '../mev/mev.service';
 import { StrategyEngineService } from '../strategy/strategy-engine.service';
+import { encodeAbiParameters, parseAbiParameters, encodeFunctionData } from 'viem';
+import { RebalanceExecutorABI } from '../contracts/abis';
+import { CONTRACTS } from '../contracts/addresses';
 
 @Processor(QUEUE_NAMES.REBALANCE)
 export class ExecutorProcessor {
@@ -89,50 +92,70 @@ export class ExecutorProcessor {
         throw new Error('Gas price too high');
       }
 
-      // 4. Get optimal swap routes from DEX aggregators
+      // 4. Get delegation
+      const delegation = strategy.delegations[0];
+      if (!delegation) {
+        throw new Error('No active delegation found');
+      }
+
+      // 5. Get optimal swap routes from DEX aggregators
       const swaps = await this.dex.getOptimalSwaps(
         evaluation.executionPlan,
         chainName,
       );
 
-      // 5. Prepare rebalance transaction
-      const client = this.chain.getWalletClient(chainName);
-      const executorAddress = this.config.get(
-        `blockchain.${chainName}.contracts.delegateExecutor`,
-      );
-
-      // 6. Apply MEV protection
-      const protectedTx = await this.mev.protectTransaction(
-        {
-          to: executorAddress as `0x${string}`,
-          data: this.encodeRebalanceCall(evaluation.executionPlan, swaps),
-          gas: evaluation.executionPlan.estimatedGas,
-          maxFeePerGas: gasPrice,
-          maxPriorityFeePerGas: gasPrice / 10n,
-        },
+      // 6. Build rebalance transaction args
+      const { to, args } = await this.buildRebalanceArgs(
+        strategy,
+        delegation,
+        swaps,
         chainName,
       );
 
-      // 7. Send transaction
-      const txHash = await client.sendTransaction(protectedTx);
+      // 7. Get wallet client
+      const walletClient = this.chain.getWalletClient(chainName);
+      const publicClient = this.chain.getPublicClient(chainName);
+
+      this.logger.log(`Calling RebalanceExecutor.rebalance() at ${to}`);
+
+      // 8. Simulate contract call first
+      const { request } = await publicClient.simulateContract({
+        address: to,
+        abi: RebalanceExecutorABI,
+        functionName: 'rebalance',
+        args,
+        value: 0n,
+        account: walletClient.account,
+      });
+
+      this.logger.log('Simulation successful, sending transaction...');
+
+      // 9. Send transaction
+      const txHash = await walletClient.writeContract(request);
 
       this.logger.log(`Rebalance transaction sent: ${txHash}`);
 
-      // 7. Wait for confirmation
-      const publicClient = this.chain.getPublicClient(chainName);
+      // 10. Wait for confirmation
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
       if (receipt.status === 'success') {
         // 8. Save rebalance record
+        const gasCost = receipt.gasUsed * receipt.effectiveGasPrice;
+        const botAddress = walletClient.account.address;
+
         await this.prisma.rebalance.create({
           data: {
             strategyId,
             chainId,
             txHash,
+            userAddress,
             drift: BigInt(drift),
             gasUsed: receipt.gasUsed,
             gasPrice: receipt.effectiveGasPrice,
+            gasCost,
+            swapsExecuted: swaps.length,
             status: 'SUCCESS',
+            executedBy: botAddress,
             executedAt: new Date(),
           },
         });
@@ -157,16 +180,23 @@ export class ExecutorProcessor {
       );
 
       // Save failed rebalance
+      const botWalletClient = this.chain.getWalletClient(chainName);
+      const botAddress = botWalletClient.account.address;
+
       await this.prisma.rebalance.create({
         data: {
           strategyId,
           chainId,
           txHash: '',
+          userAddress,
           drift: BigInt(drift),
           gasUsed: 0n,
           gasPrice: 0n,
+          gasCost: 0n,
+          swapsExecuted: 0,
           status: 'FAILED',
-          error: error.message,
+          errorMessage: error.message,
+          executedBy: botAddress,
           executedAt: new Date(),
         },
       });
@@ -184,13 +214,69 @@ export class ExecutorProcessor {
   }
 
   /**
-   * Encode rebalance call data for DelegateExecutor
+   * Build rebalance transaction arguments
+   * Encodes delegation and swap data for RebalanceExecutor.rebalance()
    */
-  private encodeRebalanceCall(executionPlan: any, swaps: any[]): `0x${string}` {
-    // TODO: Use viem's encodeFunctionData with DelegateExecutor ABI
-    // This should encode the actual swaps from executionPlan.swaps
-    // with DEX routes from the swaps parameter
-    return '0x' as `0x${string}`;
+  private async buildRebalanceArgs(
+    strategy: any,
+    delegation: any,
+    swaps: any[],
+    chainName: 'monad' | 'base',
+  ): Promise<{
+    args: any[];
+    to: `0x${string}`;
+  }> {
+    const userAccount = strategy.userAddress as `0x${string}`;
+    const strategyId = BigInt(strategy.strategyId);
+
+    // 1. Encode delegation as permissionContext
+    const delegationData = delegation.delegationData;
+
+    // Build caveat array with proper structure
+    const caveats = (delegationData.caveats || []).map((c: any) => [
+      c.enforcer as `0x${string}`,
+      c.terms as `0x${string}`,
+      c.args || ('0x' as `0x${string}`),
+    ]);
+
+    const permissionContext = encodeAbiParameters(
+      parseAbiParameters('(address,address,bytes32,(address,bytes,bytes)[],uint256,bytes)'),
+      [
+        [
+          delegationData.delegate as `0x${string}`,
+          userAccount,
+          (delegationData.authority || '0x0000000000000000000000000000000000000000000000000000000000000000') as `0x${string}`,
+          caveats,
+          BigInt(delegationData.salt || 0),
+          delegation.signature as `0x${string}`,
+        ],
+      ],
+    );
+
+    // 2. Build swap data arrays
+    const swapTargets: `0x${string}`[] = swaps.map((s) => s.target as `0x${string}`);
+    const swapCallDatas: `0x${string}`[] = swaps.map((s) => s.data as `0x${string}`);
+    const minOutputAmounts: bigint[] = swaps.map((s) => BigInt(s.minOutput || 0));
+
+    // 3. Execution mode (SingleDefault = 0)
+    const MODE_SINGLE_DEFAULT =
+      '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`;
+
+    // 4. Get executor address
+    const executorAddress = CONTRACTS[chainName].executor;
+
+    return {
+      to: executorAddress,
+      args: [
+        userAccount,
+        strategyId,
+        swapTargets,
+        swapCallDatas,
+        minOutputAmounts,
+        [permissionContext],
+        [MODE_SINGLE_DEFAULT],
+      ],
+    };
   }
 
   /**
