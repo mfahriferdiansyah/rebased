@@ -76,12 +76,18 @@ export class GasService {
         data: [
           {
             chainId: 10143,
-            gasPrice: monadGas,
+            slow: monadGas,
+            standard: monadGas,
+            fast: monadGas,
+            instant: monadGas,
             timestamp: new Date(),
           },
           {
             chainId: 84532,
-            gasPrice: baseGas,
+            slow: baseGas,
+            standard: baseGas,
+            fast: baseGas,
+            instant: baseGas,
             timestamp: new Date(),
           },
         ],
@@ -115,7 +121,7 @@ export class GasService {
       };
     }
 
-    const gasPrices = prices.map((p) => p.gasPrice);
+    const gasPrices = prices.map((p) => p.standard); // Use standard gas price
     const min = gasPrices.reduce((a, b) => (a < b ? a : b));
     const max = gasPrices.reduce((a, b) => (a > b ? a : b));
     const sum = gasPrices.reduce((a, b) => a + b, 0n);

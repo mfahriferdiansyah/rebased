@@ -34,17 +34,25 @@ export class CreateDelegationDto {
   delegateAddress: string;
 
   @ApiProperty({
-    description: 'ERC-7710 delegation data',
+    description: 'MetaMask Delegation Framework v1.3.0 delegation data',
     example: {
-      delegate: '0x...',
-      authority: '0x...',
-      caveats: [],
-      salt: 0,
-      signature: '0x...',
+      delegate: '0x...', // Bot address
+      delegator: '0x...', // DeleGator smart account
+      authority: '0x0000000000000000000000000000000000000000000000000000000000000000', // Root delegation
+      caveats: [], // Array of restrictions
+      salt: '0x...', // Unique identifier
+      deadline: 0, // Expiration timestamp (0 = never expires)
     },
   })
   @IsObject()
-  delegationData: any;
+  delegationData: {
+    delegate: string;
+    delegator: string;
+    authority: string;
+    caveats: Array<{ enforcer: string; terms: string }>;
+    salt: string | number;
+    deadline: number;
+  };
 
   @ApiProperty({
     description: 'EIP-712 signature of the delegation',

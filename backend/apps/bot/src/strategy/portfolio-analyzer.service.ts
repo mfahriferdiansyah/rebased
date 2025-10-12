@@ -117,7 +117,7 @@ export class PortfolioAnalyzerService {
     chainName: string,
   ): Promise<bigint> {
     try {
-      const client = this.chain.getPublicClient(chainName);
+      const client = this.chain.getPublicClient(chainName as any);
 
       // Handle native token (ETH)
       if (
@@ -144,7 +144,8 @@ export class PortfolioAnalyzerService {
         ],
         functionName: 'balanceOf',
         args: [userAddress as `0x${string}`],
-      });
+        authorizationList: undefined,
+      } as any);
 
       return balance as bigint;
     } catch (error) {

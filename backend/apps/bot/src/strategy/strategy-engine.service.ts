@@ -59,13 +59,13 @@ export class StrategyEngineService {
       }
 
       this.logger.debug(
-        `Evaluating strategy ${dbStrategy.id} for user ${dbStrategy.user.walletAddress}`,
+        `Evaluating strategy ${dbStrategy.id} for user ${dbStrategy.user.address}`,
       );
 
       // Step 2: Analyze portfolio state
       const portfolioState = await this.portfolioAnalyzer.analyzePortfolio(
         strategy,
-        dbStrategy.user.walletAddress,
+        dbStrategy.user.address,
         dbStrategy.chainId,
       );
 
@@ -174,7 +174,7 @@ export class StrategyEngineService {
 
       const portfolioState = await this.portfolioAnalyzer.analyzePortfolio(
         strategy,
-        dbStrategy.user.walletAddress,
+        dbStrategy.user.address,
         dbStrategy.chainId,
       );
 

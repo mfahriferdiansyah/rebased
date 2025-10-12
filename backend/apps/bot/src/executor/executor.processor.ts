@@ -35,6 +35,7 @@ export class ExecutorProcessor {
   @Process('execute-rebalance')
   async handleRebalance(job: Job<RebalanceJobData>) {
     const { strategyId, userAddress, chainId, drift } = job.data;
+    const chainName = chainId === 10143 ? 'monad' : 'base';
 
     this.logger.log(
       `Processing rebalance job ${job.id} for strategy ${strategyId} (drift: ${drift / 100}%)`,
@@ -81,7 +82,6 @@ export class ExecutorProcessor {
       );
 
       // 3. Check gas price
-      const chainName = chainId === 10143 ? 'monad' : 'base';
       const gasPrice = await this.gas.getOptimalGasPrice(chainName);
       const maxGasPrice = this.config.get<bigint>('bot.maxGasPrice', 100000000000n);
 
@@ -102,6 +102,7 @@ export class ExecutorProcessor {
       const swaps = await this.dex.getOptimalSwaps(
         evaluation.executionPlan,
         chainName,
+        strategy.userAddress,
       );
 
       // 6. Build rebalance transaction args
@@ -126,7 +127,8 @@ export class ExecutorProcessor {
         args,
         value: 0n,
         account: walletClient.account,
-      });
+        authorizationList: undefined,
+      } as any);
 
       this.logger.log('Simulation successful, sending transaction...');
 

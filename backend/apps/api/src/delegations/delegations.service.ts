@@ -20,7 +20,7 @@ export class DelegationsService {
   ) {}
 
   /**
-   * EIP-712 domain for delegation signatures
+   * EIP-712 domain for delegation signatures (MetaMask v1.3.0 compatible)
    */
   private getDomain(chainId: number) {
     // Map chainId to chain name: 10143 = Monad Testnet, 10200 = Monad Mainnet
@@ -31,23 +31,25 @@ export class DelegationsService {
     );
 
     return {
-      name: 'Rebased DelegationManager',
-      version: '1',
+      name: 'DelegationManager',
+      version: '1.3.0',
       chainId: BigInt(chainId),
       verifyingContract: delegationManagerAddress as `0x${string}`,
     };
   }
 
   /**
-   * EIP-712 types for delegation
+   * EIP-712 types for delegation (MetaMask Delegation Framework v1.3.0)
    */
   private getDelegationTypes() {
     return {
       Delegation: [
         { name: 'delegate', type: 'address' },
+        { name: 'delegator', type: 'address' },
         { name: 'authority', type: 'bytes32' },
         { name: 'caveats', type: 'Caveat[]' },
         { name: 'salt', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
       ],
       Caveat: [
         { name: 'enforcer', type: 'address' },
@@ -211,21 +213,38 @@ export class DelegationsService {
   }
 
   /**
-   * Revoke a delegation
+   * Revoke a delegation (marks as inactive in database)
+   * @dev On-chain revocation must be done by user via frontend calling DelegationManager.disableDelegation()
    */
   async revoke(id: string, userAddress: string) {
     // Verify ownership
-    await this.findOne(id, userAddress);
+    const delegation = await this.findOne(id, userAddress);
 
-    // Mark as inactive
+    // Mark as inactive in database
     await this.prisma.delegation.update({
       where: { id },
       data: { isActive: false },
     });
 
-    // TODO: Also revoke on-chain via DelegationManager contract
-
-    return { success: true, message: 'Delegation revoked successfully' };
+    // Return delegation data for on-chain revocation
+    // Frontend will call DelegationManager.disableDelegation() with this data
+    return {
+      success: true,
+      message: 'Delegation marked as inactive in database',
+      onChainRevocationRequired: true,
+      delegationData: {
+        delegate: delegation.delegationData.delegate,
+        delegator: delegation.delegationData.delegator || userAddress,
+        authority: delegation.delegationData.authority || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        caveats: delegation.delegationData.caveats || [],
+        salt: delegation.delegationData.salt,
+        deadline: delegation.delegationData.deadline || 0,
+      },
+      contractAddress: this.config.get(
+        `blockchain.${delegation.chainId === 84532 ? 'base' : 'monad'}.contracts.delegationManager`,
+      ),
+      chainId: delegation.chainId,
+    };
   }
 
   /**
