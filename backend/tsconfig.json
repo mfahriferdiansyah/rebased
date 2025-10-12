@@ -1,0 +1,65 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@app/common": [
+        "libs/common/src"
+      ],
+      "@app/common/*": [
+        "libs/common/src/*"
+      ],
+      "@app/database": [
+        "libs/database/src"
+      ],
+      "@app/database/*": [
+        "libs/database/src/*"
+      ],
+      "@app/blockchain": [
+        "libs/blockchain/src"
+      ],
+      "@app/blockchain/*": [
+        "libs/blockchain/src/*"
+      ],
+      "@app/queue": [
+        "libs/queue/src"
+      ],
+      "@app/queue/*": [
+        "libs/queue/src/*"
+      ],
+      "@app/notifications": [
+        "libs/notifications/src"
+      ],
+      "@app/notifications/*": [
+        "libs/notifications/src/*"
+      ],
+      "@app/config": [
+        "libs/config/src"
+      ],
+      "@app/config/*": [
+        "libs/config/src/*"
+      ],
+      "@app/events": [
+        "libs/events/src"
+      ],
+      "@app/events/*": [
+        "libs/events/src/*"
+      ]
+    }
+  }
+}

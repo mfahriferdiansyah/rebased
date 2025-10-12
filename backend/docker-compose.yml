@@ -1,0 +1,162 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: rebased-postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: rebased
+      POSTGRES_PASSWORD: rebased_dev
+      POSTGRES_DB: rebased
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U rebased']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Bull queues and pub/sub
+  redis:
+    image: redis:7-alpine
+    container_name: rebased-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # API Server
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: rebased-api
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://rebased:rebased_dev@postgres:5432/rebased
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:api
+
+  # Bot Worker
+  bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.bot
+    container_name: rebased-bot
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://rebased:rebased_dev@postgres:5432/rebased
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: npm run start:bot
+
+  # Indexer Worker
+  indexer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.indexer
+    container_name: rebased-indexer
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://rebased:rebased_dev@postgres:5432/rebased
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: npm run start:indexer
+
+  # Bull Board - Queue monitoring UI
+  bull-board:
+    image: deadly0/bull-board
+    container_name: rebased-bull-board
+    restart: unless-stopped
+    ports:
+      - '3001:3000'
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BULL_PREFIX: bull
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Prisma Studio - Database GUI
+  prisma-studio:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: rebased-prisma-studio
+    restart: unless-stopped
+    ports:
+      - '5555:5555'
+    environment:
+      DATABASE_URL: postgresql://rebased:rebased_dev@postgres:5432/rebased
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npx prisma studio --port 5555 --browser none
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: rebased-network

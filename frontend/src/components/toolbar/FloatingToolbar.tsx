@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { BlockType } from "@/lib/types/blocks";
 import { Strategy } from "@/lib/types/strategy";
 import { loadJSONFile, downloadJSON } from "@/lib/utils/serialization";
-import { Clock, Wallet, GitBranch, Zap, Upload, Download, Target, Trash2, Sparkles, Menu, Undo2, Redo2 } from "lucide-react";
+import { Clock, Wallet, GitBranch, Zap, Upload, Download, Target, Trash2, Sparkles, Menu, Undo2, Redo2, Save } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -20,15 +20,17 @@ interface FloatingToolbarProps {
   strategy: Strategy | null;
   onBlockAdd: (type: BlockType) => void;
   onStrategyLoad: (strategy: Strategy) => void;
+  onStrategySave?: () => void;
   onReset: () => void;
   onAutoLayout: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  isSaving?: boolean;
 }
 
-export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onReset, onAutoLayout, onUndo, onRedo, canUndo, canRedo }: FloatingToolbarProps) {
+export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrategySave, onReset, onAutoLayout, onUndo, onRedo, canUndo, canRedo, isSaving }: FloatingToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showMainMenu, setShowMainMenu] = useState(false);
@@ -138,6 +140,7 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onReset,
                     flex items-center gap-1.5
                   "
                   title={`Add ${block.label}`}
+                  aria-label={`Add ${block.label} block`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{block.label}</span>
@@ -211,6 +214,25 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onReset,
 
             {strategy && (
               <>
+                <button
+                  onClick={onStrategySave}
+                  disabled={isSaving || !onStrategySave}
+                  className="
+                    px-2.5 py-1.5 rounded
+                    text-xs font-medium
+                    transition-all duration-200
+                    bg-gray-900 text-white
+                    hover:bg-gray-800
+                    active:scale-95
+                    disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-900
+                    flex items-center gap-1.5
+                  "
+                  title="Save Strategy to Backend"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                </button>
+
                 <button
                   onClick={handleExport}
                   className="

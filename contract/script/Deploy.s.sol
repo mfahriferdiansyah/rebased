@@ -36,8 +36,11 @@ import "../src/delegation/enforcers/NativeTokenPaymentEnforcer.sol";
 contract Deploy is Script {
     struct Deployment {
         address pythOracle;
+        address pythOracleImpl;
         address rebalancerConfig;
+        address rebalancerConfigImpl;
         address uniswapHelper;
+        address uniswapHelperImpl;
         address delegationManager;
         address allowedTargetsEnforcer;
         address allowedMethodsEnforcer;
@@ -45,7 +48,9 @@ contract Deploy is Script {
         address limitedCallsEnforcer;
         address nativeTokenPaymentEnforcer;
         address strategyRegistry;
+        address strategyRegistryImpl;
         address rebalanceExecutor;
+        address rebalanceExecutorImpl;
     }
 
     function run() external returns (Deployment memory) {
@@ -77,7 +82,8 @@ contract Deploy is Script {
         // ============================================
         console.log("\n1. Deploying PythOracle...");
         PythOracle oracleImpl = new PythOracle();
-        console.log("  Implementation:", address(oracleImpl));
+        deployment.pythOracleImpl = address(oracleImpl);
+        console.log("  Implementation:", deployment.pythOracleImpl);
 
         bytes memory oracleInitData = abi.encodeWithSelector(
             PythOracle.initialize.selector,
@@ -93,7 +99,8 @@ contract Deploy is Script {
         // ============================================
         console.log("\n2. Deploying RebalancerConfig...");
         RebalancerConfig configImpl = new RebalancerConfig();
-        console.log("  Implementation:", address(configImpl));
+        deployment.rebalancerConfigImpl = address(configImpl);
+        console.log("  Implementation:", deployment.rebalancerConfigImpl);
 
         bytes memory configInitData = abi.encodeWithSelector(
             RebalancerConfig.initialize.selector,
@@ -108,7 +115,8 @@ contract Deploy is Script {
         // ============================================
         console.log("\n3. Deploying UniswapHelper...");
         UniswapHelper uniswapHelperImpl = new UniswapHelper();
-        console.log("  Implementation:", address(uniswapHelperImpl));
+        deployment.uniswapHelperImpl = address(uniswapHelperImpl);
+        console.log("  Implementation:", deployment.uniswapHelperImpl);
 
         bytes memory uniswapInitData = abi.encodeWithSelector(
             UniswapHelper.initialize.selector,
@@ -157,7 +165,8 @@ contract Deploy is Script {
         // ============================================
         console.log("\n6. Deploying StrategyRegistry...");
         StrategyRegistry registryImpl = new StrategyRegistry();
-        console.log("  Implementation:", address(registryImpl));
+        deployment.strategyRegistryImpl = address(registryImpl);
+        console.log("  Implementation:", deployment.strategyRegistryImpl);
 
         bytes memory registryInitData = abi.encodeWithSelector(
             StrategyRegistry.initialize.selector,
@@ -172,7 +181,8 @@ contract Deploy is Script {
         // ============================================
         console.log("\n7. Deploying RebalanceExecutor...");
         RebalanceExecutor executorImpl = new RebalanceExecutor();
-        console.log("  Implementation:", address(executorImpl));
+        deployment.rebalanceExecutorImpl = address(executorImpl);
+        console.log("  Implementation:", deployment.rebalanceExecutorImpl);
 
         bytes memory executorInitData = abi.encodeWithSelector(
             RebalanceExecutor.initialize.selector,
@@ -225,8 +235,11 @@ contract Deploy is Script {
             '{\n',
             '  "', chainName, '": {\n',
             '    "pythOracle": "', vm.toString(deployment.pythOracle), '",\n',
+            '    "pythOracleImpl": "', vm.toString(deployment.pythOracleImpl), '",\n',
             '    "rebalancerConfig": "', vm.toString(deployment.rebalancerConfig), '",\n',
+            '    "rebalancerConfigImpl": "', vm.toString(deployment.rebalancerConfigImpl), '",\n',
             '    "uniswapHelper": "', vm.toString(deployment.uniswapHelper), '",\n',
+            '    "uniswapHelperImpl": "', vm.toString(deployment.uniswapHelperImpl), '",\n',
             '    "delegationManager": "', vm.toString(deployment.delegationManager), '",\n',
             '    "allowedTargetsEnforcer": "', vm.toString(deployment.allowedTargetsEnforcer), '",\n',
             '    "allowedMethodsEnforcer": "', vm.toString(deployment.allowedMethodsEnforcer), '",\n',
@@ -234,7 +247,9 @@ contract Deploy is Script {
             '    "limitedCallsEnforcer": "', vm.toString(deployment.limitedCallsEnforcer), '",\n',
             '    "nativeTokenPaymentEnforcer": "', vm.toString(deployment.nativeTokenPaymentEnforcer), '",\n',
             '    "strategyRegistry": "', vm.toString(deployment.strategyRegistry), '",\n',
-            '    "rebalanceExecutor": "', vm.toString(deployment.rebalanceExecutor), '"\n',
+            '    "strategyRegistryImpl": "', vm.toString(deployment.strategyRegistryImpl), '",\n',
+            '    "rebalanceExecutor": "', vm.toString(deployment.rebalanceExecutor), '",\n',
+            '    "rebalanceExecutorImpl": "', vm.toString(deployment.rebalanceExecutorImpl), '"\n',
             '  }\n',
             '}'
         );

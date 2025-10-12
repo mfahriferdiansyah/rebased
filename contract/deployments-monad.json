@@ -1,0 +1,20 @@
+{
+  "monad": {
+    "pythOracle": "0x184f0CAeDF055cfDEedb7990aABCDDcA8A87378e",
+    "pythOracleImpl": "0x3125481D17922aBA4069e9d1d57794eaF95C61dd",
+    "rebalancerConfig": "0x43778ecbb46c5a2531C0633D4B5088EC160B5566",
+    "rebalancerConfigImpl": "0x728f2D037c7E7f91c661d887eD65B3e20427Fa31",
+    "uniswapHelper": "0xD0cB3B4c0eEd01b33f9279a5c0F049f4F2Ae0f1e",
+    "uniswapHelperImpl": "0x30E55cBE671840F4A0cE5ec874d22C97d5fDEf47",
+    "delegationManager": "0xf303c1748c4f8589DCfF0E501a252F49c355c28D",
+    "allowedTargetsEnforcer": "0x543bDBD6d56Df6b97B25A619DbAbd96FB2a6E767",
+    "allowedMethodsEnforcer": "0xA04c4257294395DE695286FE689017b238edE7Ae",
+    "timestampEnforcer": "0xaED9D86a72A404ba6559C6bF1f3b877455387073",
+    "limitedCallsEnforcer": "0xf7ebeC3f5077D5fa28C0cB60C408B22CD436d019",
+    "nativeTokenPaymentEnforcer": "0x5d5810aB86deE9e9f61343f4753Bcd94d5E091Ae",
+    "strategyRegistry": "0x83f8381fbA4D5AEcc3D85bE4c15fF55C82aA61a9",
+    "strategyRegistryImpl": "0x077CC443D82838f769334532C5149b54EaBAc834",
+    "rebalanceExecutor": "0x7BF4960a670aD2f9821Ccf2e2c15D1AF21F62837",
+    "rebalanceExecutorImpl": "0xC94ba3c50e29787ded9eb03989D3BF54ee6defE5"
+  }
+}

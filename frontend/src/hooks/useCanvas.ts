@@ -321,61 +321,82 @@ export function useCanvas() {
     });
   }, [saveToHistory]);
 
-  const createDemoStrategy = useCallback(() => {
-    const demoStrategy: Strategy = {
-      id: `strategy-${Date.now()}`,
-      name: "Demo Portfolio",
-      description: "60% ETH, 40% USDC demo strategy",
-      startBlockPosition: { x: 50, y: 200 },
-      endBlockPosition: { x: 800, y: 200 },
-      blocks: [
-        {
-          id: "asset-eth-1",
-          type: BlockType.ASSET,
-          position: { x: 400, y: 100 },
-          size: { width: 200, height: 150 },
-          data: {
-            symbol: "ETH",
-            name: "Ethereum",
-            initialWeight: 60,
-            icon: "💎",
-          },
-          connections: { inputs: ["start-block"], outputs: [] },
-        },
-        {
-          id: "asset-usdc-1",
-          type: BlockType.ASSET,
-          position: { x: 400, y: 300 },
-          size: { width: 200, height: 150 },
-          data: {
-            symbol: "USDC",
-            name: "USD Coin",
-            initialWeight: 40,
-            icon: "💵",
-          },
-          connections: { inputs: ["start-block"], outputs: [] },
-        },
-      ],
-      connections: [
-        {
-          id: "conn-start-eth",
-          source: { blockId: "start-block", port: "output" },
-          target: { blockId: "asset-eth-1", port: "input" },
-        },
-        {
-          id: "conn-start-usdc",
-          source: { blockId: "start-block", port: "output" },
-          target: { blockId: "asset-usdc-1", port: "input" },
-        },
-      ],
-      metadata: {
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        version: "1.0",
-      },
-    };
+  const createDemoStrategy = useCallback(async () => {
+    // Fetch real tokens from the API
+    const { tokensApi } = await import('@/lib/api');
 
-    setStrategy(demoStrategy);
+    try {
+      const response = await tokensApi.getTokens([10143, 84532]);
+
+      // Find WETH and USDC from the fetched tokens
+      const weth = response.tokens.find(t => t.symbol === 'WETH') || response.tokens[0];
+      const usdc = response.tokens.find(t => t.symbol === 'USDC') || response.tokens[1];
+
+      const demoStrategy: Strategy = {
+        id: `strategy-${Date.now()}`,
+        name: "Demo Portfolio",
+        description: `${weth?.symbol || 'Token 1'} and ${usdc?.symbol || 'Token 2'} demo strategy`,
+        startBlockPosition: { x: 50, y: 200 },
+        endBlockPosition: { x: 800, y: 200 },
+        blocks: [
+          {
+            id: "asset-1",
+            type: BlockType.ASSET,
+            position: { x: 400, y: 100 },
+            size: { width: 200, height: 150 },
+            data: {
+              symbol: weth?.symbol || 'TOKEN',
+              name: weth?.name || 'Token',
+              address: weth?.address || '0x0',
+              chainId: weth?.chainId || 10143,
+              decimals: weth?.decimals || 18,
+              logoUri: weth?.logoUri,
+              initialWeight: 60,
+            },
+            connections: { inputs: ["start-block"], outputs: [] },
+          },
+          {
+            id: "asset-2",
+            type: BlockType.ASSET,
+            position: { x: 400, y: 300 },
+            size: { width: 200, height: 150 },
+            data: {
+              symbol: usdc?.symbol || 'TOKEN',
+              name: usdc?.name || 'Token',
+              address: usdc?.address || '0x0',
+              chainId: usdc?.chainId || 10143,
+              decimals: usdc?.decimals || 6,
+              logoUri: usdc?.logoUri,
+              initialWeight: 40,
+            },
+            connections: { inputs: ["start-block"], outputs: [] },
+          },
+        ],
+        connections: [
+          {
+            id: "conn-start-1",
+            source: { blockId: "start-block", port: "output" },
+            target: { blockId: "asset-1", port: "input" },
+          },
+          {
+            id: "conn-start-2",
+            source: { blockId: "start-block", port: "output" },
+            target: { blockId: "asset-2", port: "input" },
+          },
+        ],
+        metadata: {
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          version: "1.0",
+        },
+      };
+
+      setStrategy(demoStrategy);
+    } catch (error) {
+      console.error('Failed to load demo strategy:', error);
+      // Fallback to empty strategy
+      resetCanvas();
+    }
   }, []);
 
   const clearStrategy = useCallback(() => {
@@ -400,6 +421,24 @@ export function useCanvas() {
     setSelectedBlockId(null);
   }, []);
 
+  const handleBlockUpdate = useCallback((blockId: string, newData: any) => {
+    saveToHistory();
+    setStrategy((prev) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        blocks: prev.blocks.map((block) =>
+          block.id === blockId ? { ...block, data: newData } : block
+        ),
+        metadata: {
+          ...prev.metadata,
+          updatedAt: Date.now(),
+        },
+      };
+    });
+  }, [saveToHistory]);
+
   const autoLayout = useCallback(() => {
     setStrategy((prev) => {
       if (!prev) return prev;
@@ -408,7 +447,6 @@ export function useCanvas() {
       const assetBlocks = prev.blocks.filter(b => b.type === BlockType.ASSET);
       const conditionBlocks = prev.blocks.filter(b => b.type === BlockType.CONDITION);
       const actionBlocks = prev.blocks.filter(b => b.type === BlockType.ACTION);
-      const triggerBlocks = prev.blocks.filter(b => b.type === BlockType.TRIGGER);
 
       // Layout configuration
       const startX = 50;
@@ -434,8 +472,7 @@ export function useCanvas() {
       const maxBlocks = Math.max(
         assetBlocks.length,
         conditionBlocks.length,
-        actionBlocks.length,
-        triggerBlocks.length
+        actionBlocks.length
       );
       const centerY = startY + ((maxBlocks - 1) * rowSpacing) / 2;
 
@@ -503,24 +540,6 @@ export function useCanvas() {
         rightmostX = columnX + BLOCK_WIDTH;
       }
 
-      // Layout Trigger blocks if they exist
-      if (triggerBlocks.length > 0) {
-        const columnX = getColumnX();
-        triggerBlocks.forEach((block, index) => {
-          const blockIndex = layoutBlocks.findIndex(b => b.id === block.id);
-          if (blockIndex !== -1) {
-            layoutBlocks[blockIndex] = {
-              ...layoutBlocks[blockIndex],
-              position: {
-                x: columnX,
-                y: startY + (index * rowSpacing),
-              },
-            };
-          }
-        });
-        rightmostX = columnX + BLOCK_WIDTH;
-      }
-
       // Place END block after the rightmost block
       const endX = rightmostX + columnSpacing;
 
@@ -548,6 +567,7 @@ export function useCanvas() {
     handleConnectionCreate,
     handleConnectionDelete,
     handleBlockDelete,
+    handleBlockUpdate,
     addBlock,
     createDemoStrategy,
     clearStrategy,

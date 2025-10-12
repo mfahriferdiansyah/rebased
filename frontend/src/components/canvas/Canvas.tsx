@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { Block } from "@/lib/types/blocks";
 import { Connection } from "@/lib/types/strategy";
+import type { Delegation } from "@/lib/types/delegation";
 import { Grid } from "./Grid";
 import { BlockRenderer } from "../blocks/BlockRenderer";
 import { StartBlock } from "../blocks/StartBlock";
@@ -22,8 +23,13 @@ interface CanvasProps {
   onConnectionCreate?: (sourceId: string, targetId: string) => void;
   onConnectionDelete?: (connectionId: string) => void;
   onBlockDelete?: (blockId: string) => void;
+  onBlockEdit?: (block: Block) => void;
   onStartBlockMove?: (position: { x: number; y: number }) => void;
   onEndBlockMove?: (position: { x: number; y: number }) => void;
+
+  // Delegation props
+  activeDelegation?: Delegation | null;
+  onDelegationClick?: () => void;
 }
 
 export interface CanvasHandle {
@@ -43,8 +49,11 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>((props, ref) => {
     onConnectionCreate,
     onConnectionDelete,
     onBlockDelete,
+    onBlockEdit,
     onStartBlockMove,
     onEndBlockMove,
+    activeDelegation,
+    onDelegationClick,
   } = props;
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -670,6 +679,8 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>((props, ref) => {
             onMouseEnter={() => handleBlockMouseEnter("start-block")}
             onMouseLeave={handleBlockMouseLeave}
             dragOffset={dragTransform?.blockId === "start-block" ? dragTransform.offset : undefined}
+            activeDelegation={activeDelegation}
+            onDelegationClick={onDelegationClick}
           />
         </div>
 
@@ -695,6 +706,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>((props, ref) => {
           <div key={block.id} data-block-id={block.id} style={{ pointerEvents: 'auto' }}>
             <BlockRenderer
               block={block}
+              blocks={blocks}
               zoom={viewport.zoom}
               isSelected={block.id === selectedBlockId}
               isInConnectionMode={firstSelectedBlock === block.id}
@@ -704,6 +716,7 @@ export const Canvas = forwardRef<CanvasHandle, CanvasProps>((props, ref) => {
               onMouseEnter={() => handleBlockMouseEnter(block.id)}
               onMouseLeave={handleBlockMouseLeave}
               onDelete={() => onBlockDelete?.(block.id)}
+              onEdit={onBlockEdit}
               dragOffset={dragTransform?.blockId === block.id ? dragTransform.offset : undefined}
             />
           </div>

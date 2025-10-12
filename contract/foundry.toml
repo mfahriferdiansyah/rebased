@@ -12,9 +12,14 @@ remappings = [
     '@pythnetwork/pyth-sdk-solidity/=lib/pyth-sdk-solidity/',
     'forge-std/=lib/forge-std/src/'
 ]
+# Allow deployment JSON writes
+fs_permissions = [{ access = "read-write", path = "./" }]
+
+# Contract verification settings (for Sourcify & Blockscout)
+metadata = true
+metadata_hash = "none"
+use_literal_content = true
 
 [rpc_endpoints]
-monad_testnet = "${MONAD_RPC_URL}"
-
-[etherscan]
-monad_testnet = { key = "${MONAD_EXPLORER_API_KEY}" }
+monad_testnet = "https://testnet-rpc.monad.xyz"
+base_sepolia = "https://sepolia.base.org"

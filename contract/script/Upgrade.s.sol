@@ -101,6 +101,28 @@ contract Upgrade is Script {
 
         // Get and log version
         _logVersion(contractType, proxyAddress);
+
+        // Verification reminder
+        console.log("\n=== CONTRACT VERIFICATION ===");
+        console.log("IMPORTANT: Verify the new implementation on the block explorer");
+        console.log("New Implementation Address:", newImplementation);
+        console.log("\nVerification command:");
+
+        if (block.chainid == 84532) {
+            // Base Sepolia - Blockscout (FREE)
+            console.log(string.concat(
+                "forge verify-contract --rpc-url https://sepolia.base.org --verifier blockscout --verifier-url 'https://base-sepolia.blockscout.com/api/' ",
+                vm.toString(newImplementation),
+                " src/", contractType, ".sol:", contractType
+            ));
+        } else if (block.chainid == 10143) {
+            // Monad Testnet - Sourcify (FREE)
+            console.log(string.concat(
+                "forge verify-contract --rpc-url https://testnet-rpc.monad.xyz --verifier sourcify --verifier-url 'https://sourcify-api-monad.blockvision.org' ",
+                vm.toString(newImplementation),
+                " src/", contractType, ".sol:", contractType
+            ));
+        }
     }
 
     /**

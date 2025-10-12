@@ -1,6 +1,9 @@
 import React from "react";
 import { AssetBlock as AssetBlockType } from "@/lib/types/blocks";
 import { Wallet, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { TokenIcon } from "@/components/ui/token-icon";
+import { getChainLogoUrl } from "@/lib/utils/token-logo";
 
 interface AssetBlockProps {
   block: AssetBlockType;
@@ -13,6 +16,7 @@ interface AssetBlockProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onDelete?: () => void;
+  onEdit?: (block: AssetBlockType) => void;
   dragOffset?: { x: number; y: number };
 }
 
@@ -27,6 +31,7 @@ export function AssetBlock({
   onMouseEnter,
   onMouseLeave,
   onDelete,
+  onEdit,
   dragOffset
 }: AssetBlockProps) {
   const actualX = block.position.x + (dragOffset?.x || 0);
@@ -55,6 +60,10 @@ export function AssetBlock({
       onMouseDown={onMouseDown}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onEdit?.(block);
+      }}
     >
       {/* Delete button - only visible when selected */}
       {isSelected && onDelete && (
@@ -71,14 +80,33 @@ export function AssetBlock({
         </button>
       )}
 
+      {/* Chain Badge - using actual logo, NO colors */}
+      <Badge
+        variant="outline"
+        className="absolute top-2 right-2 text-xs border-gray-200 bg-white text-gray-900"
+      >
+        <img
+          src={getChainLogoUrl(block.data.chainId)}
+          alt={block.data.chainId === 10143 ? 'Monad' : 'Base'}
+          className="w-3 h-3 rounded-full mr-1.5"
+        />
+        {block.data.chainId === 10143 ? 'Monad' : 'Base'}
+      </Badge>
+
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
-          <Wallet className="w-4 h-4 text-gray-700" />
-        </div>
-        <div className="flex-1">
-          <div className="font-semibold text-sm text-gray-900">{block.data.symbol}</div>
-          <div className="text-xs text-gray-500">{block.data.name}</div>
+        {/* Token Logo */}
+        <TokenIcon
+          address={block.data.address}
+          chainId={block.data.chainId}
+          symbol={block.data.symbol}
+          logoUri={block.data.logoUri}
+          size={28}
+          showChainBadge={false}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm text-gray-900 truncate">{block.data.symbol}</div>
+          <div className="text-xs text-gray-500 truncate">{block.data.name}</div>
         </div>
       </div>
 

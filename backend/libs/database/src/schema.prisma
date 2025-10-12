@@ -1,0 +1,243 @@
+// Rebased Database Schema
+// Non-custodial portfolio automation platform
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  address       String        @id // Ethereum address
+  nonce         String        @default(uuid()) // SIWE nonce
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  strategies    Strategy[]
+  delegations   Delegation[]
+
+  @@map("users")
+}
+
+// ============================================
+// STRATEGY MANAGEMENT
+// ============================================
+
+model Strategy {
+  id                String      @id @default(uuid())
+  chainId           Int         // 10143 (Monad) or 84532 (Base)
+  strategyId        BigInt      // On-chain strategy ID
+  userAddress       String
+  name              String
+  tokens            String[]    // Array of token addresses
+  weights           Int[]       // Array of weights in basis points (sum = 10000)
+  rebalanceInterval BigInt      // Seconds between rebalances
+  strategyLogic     Json?       // Complete canvas strategy (blocks, connections, metadata)
+  version           String      @default("1.0") // Strategy schema version
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  // Relations
+  user              User        @relation(fields: [userAddress], references: [address], onDelete: Cascade)
+  rebalances        Rebalance[]
+  delegations       Delegation[]
+
+  @@unique([userAddress, strategyId, chainId])
+  @@index([userAddress])
+  @@index([chainId])
+  @@index([isActive])
+  @@map("strategies")
+}
+
+// ============================================
+// DELEGATION MANAGEMENT
+// ============================================
+
+model Delegation {
+  id                  String    @id @default(uuid())
+  chainId             Int
+  strategyId          String?   // Strategy this delegation applies to (optional - can be linked later)
+  userAddress         String
+  delegateAddress     String    // Bot address
+  delegationData      Json      // Full delegation struct (ERC-7710)
+  signature           String    // User's EIP-712 signature
+  isActive            Boolean   @default(true)
+  expiresAt           DateTime? // Optional expiration
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  revokedAt           DateTime?
+
+  // Relations
+  user                User      @relation(fields: [userAddress], references: [address], onDelete: Cascade)
+  strategy            Strategy? @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  // Removed @@unique([userAddress, delegateAddress, chainId]) to allow multiple delegations
+  // Users can create multiple delegations to same bot with different caveats/strategies
+  @@index([userAddress])
+  @@index([strategyId])
+  @@index([delegateAddress])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@map("delegations")
+}
+
+// ============================================
+// REBALANCE HISTORY
+// ============================================
+
+model Rebalance {
+  id              String    @id @default(uuid())
+  strategyId      String
+  txHash          String    @unique
+  chainId         Int
+  userAddress     String
+  drift           BigInt    // Drift before rebalance (basis points)
+  driftAfter      BigInt?   // Drift after rebalance (basis points)
+  gasUsed         BigInt
+  gasPrice        BigInt
+  gasCost         BigInt    // gasUsed * gasPrice
+  swapsExecuted   Int       // Number of swaps
+  status          RebalanceStatus @default(PENDING)
+  errorMessage    String?
+  executedBy      String?   // Bot address that executed
+  createdAt       DateTime  @default(now())
+  executedAt      DateTime  @default(now())
+
+  // Relations
+  strategy        Strategy  @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+  @@index([userAddress])
+  @@index([chainId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([executedAt])
+  @@map("rebalances")
+}
+
+enum RebalanceStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERTED
+}
+
+// ============================================
+// INTENT-BASED MEV PROTECTION
+// ============================================
+
+model Intent {
+  id              String      @id @default(uuid())
+  userAddress     String
+  strategyId      String
+  chainId         Int
+  intentData      Json        // ERC-8001 intent data
+  status          IntentStatus @default(PENDING)
+  priority        Int         @default(5) // 1 = highest, 10 = lowest
+  executedTxHash  String?
+  createdAt       DateTime    @default(now())
+  executedAt      DateTime?
+  expiresAt       DateTime    // Intent expiration
+
+  @@index([userAddress])
+  @@index([strategyId])
+  @@index([status])
+  @@index([priority])
+  @@index([expiresAt])
+  @@map("intents")
+}
+
+enum IntentStatus {
+  PENDING
+  EXECUTING
+  EXECUTED
+  FAILED
+  EXPIRED
+}
+
+// ============================================
+// ANALYTICS & METRICS
+// ============================================
+
+model Analytics {
+  id                String    @id @default(uuid())
+  chainId           Int
+  date              DateTime  @default(now())
+
+  // Platform metrics
+  totalStrategies   Int       @default(0)
+  activeStrategies  Int       @default(0)
+  totalUsers        Int       @default(0)
+  totalRebalances   Int       @default(0)
+  successfulRebalances Int    @default(0)
+
+  // Financial metrics
+  totalValueLocked  BigInt    @default(0) // TVL in USD (18 decimals)
+  avgDriftReduction Decimal   @default(0) // Average drift reduction %
+  totalGasSaved     BigInt    @default(0) // Total gas saved via DEX aggregators
+  totalFeesCollected BigInt   @default(0) // Platform fees collected
+
+  @@unique([chainId, date])
+  @@index([chainId])
+  @@index([date])
+  @@map("analytics")
+}
+
+// ============================================
+// GAS PRICE TRACKING
+// ============================================
+
+model GasPrice {
+  id              String    @id @default(uuid())
+  chainId         Int
+  slow            BigInt    // Slow gas price (wei)
+  standard        BigInt    // Standard gas price (wei)
+  fast            BigInt    // Fast gas price (wei)
+  instant         BigInt    // Instant gas price (wei)
+  baseFee         BigInt?   // EIP-1559 base fee (wei)
+  priorityFee     BigInt?   // EIP-1559 priority fee (wei)
+  timestamp       DateTime  @default(now())
+
+  @@index([chainId])
+  @@index([timestamp])
+  @@map("gas_prices")
+}
+
+// ============================================
+// NOTIFICATION QUEUE
+// ============================================
+
+model Notification {
+  id              String    @id @default(uuid())
+  userAddress     String
+  type            NotificationType
+  title           String
+  message         String
+  data            Json?     // Additional data
+  isRead          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  @@index([userAddress])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  REBALANCE_COMPLETED
+  REBALANCE_FAILED
+  DELEGATION_EXPIRING
+  STRATEGY_DRIFT
+  LOW_GAS_PRICE
+  SYSTEM_ALERT
+}

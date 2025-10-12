@@ -125,10 +125,35 @@ forge test --gas-report
 ### Deploy to Monad Testnet
 
 ```bash
+# Set environment variables
+export PRIVATE_KEY=<your_private_key>
+export CHAIN_NAME=monad
+export PYTH_CONTRACT=0x2880aB155794e7179c9eE2e38200202908C17B43
+export UNISWAP_V2_ROUTER=0xfb8e1c3b833f9e67a71c859a132cf783b645e436
+export UNISWAP_V2_FACTORY=0x733e88f248b742db6c14c0b1713af5ad7fdd59d0
+
+# Deploy contracts
 forge script script/Deploy.s.sol \
-  --rpc-url monad_testnet \
+  --rpc-url https://testnet-rpc.monad.xyz \
   --broadcast \
-  --verify
+  --legacy
+```
+
+### Deploy to Base Sepolia
+
+```bash
+# Set environment variables
+export PRIVATE_KEY=<your_private_key>
+export CHAIN_NAME=base
+export PYTH_CONTRACT=0xA2aa501b19aff244D90cc15a4Cf739D2725B5729
+export UNISWAP_V2_ROUTER=0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+export UNISWAP_V2_FACTORY=0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6
+
+# Deploy contracts
+forge script script/Deploy.s.sol \
+  --rpc-url https://sepolia.base.org \
+  --broadcast \
+  --legacy
 ```
 
 The script will:
@@ -136,6 +161,36 @@ The script will:
 2. Deploy all proxies
 3. Initialize all contracts
 4. Output deployment addresses
+5. Save addresses to `deployments-{chain}.json`
+
+## Contract Verification
+
+**See [VERIFICATION_GUIDE.md](./VERIFICATION_GUIDE.md) for complete verification instructions.**
+
+### Quick Verification
+
+After deployment, verify all contracts:
+
+```bash
+# 1. Generate verification commands
+forge script script/VerifyContracts.s.sol --rpc-url <rpc_url>
+
+# 2. Copy and run each command from output
+```
+
+**Free verification on both chains:**
+- **Monad Testnet**: Sourcify (no API key needed)
+- **Base Sepolia**: Blockscout (no API key needed)
+
+### Current Verified Deployments
+
+**Monad Testnet**: All 11 contracts verified ✅
+- Explorer: https://testnet.monadexplorer.com
+
+**Base Sepolia**: All 11 contracts verified ✅
+- Explorer: https://base-sepolia.blockscout.com
+
+See [VERIFICATION_GUIDE.md](./VERIFICATION_GUIDE.md) for addresses and details
 
 ### Post-Deployment Configuration
 

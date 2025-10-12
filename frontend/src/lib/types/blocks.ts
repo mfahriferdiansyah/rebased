@@ -4,7 +4,6 @@ export enum BlockType {
   ASSET = "asset",
   CONDITION = "condition",
   ACTION = "action",
-  TRIGGER = "trigger",
 }
 
 export interface BaseBlock {
@@ -25,49 +24,67 @@ export interface AssetBlock extends BaseBlock {
     symbol: string; // e.g., "ETH"
     name: string; // e.g., "Ethereum"
     initialWeight: number; // e.g., 60 (%)
-    address?: string; // Token contract address
-    icon?: string; // Icon URL or emoji
+    address: string; // Token contract address
+    chainId: number; // Chain ID (e.g., 10143 for Monad, 84532 for Base)
+    decimals: number; // Token decimals (e.g., 18, 6)
+    logoUri?: string; // Token logo URL
   };
 }
 
 export interface ConditionBlock extends BaseBlock {
   type: BlockType.CONDITION;
   data: {
-    operator: "GT" | "LT" | "EQ" | "GTE" | "LTE";
-    leftOperand: {
-      type: "price" | "allocation" | "portfolioValue" | "time";
-      asset?: string; // Asset symbol if applicable
-    };
-    rightOperand: {
-      type: "value" | "percentage";
-      value: number;
-    };
-    description?: string; // Human-readable description
+    conditionType: "price" | "portfolioValue" | "assetValue";
+    operator: "GT" | "LT"; // More than (>) or Less than (<) only
+    valueUSD: number; // Value in USD
+    description?: string; // Auto-generated description
   };
 }
 
 export interface ActionBlock extends BaseBlock {
   type: BlockType.ACTION;
   data: {
-    actionType: "rebalance" | "swap" | "shift";
-    targets: Array<{
-      asset: string;
-      targetWeight: number;
-    }>;
-    description?: string;
-  };
-}
+    actionType: "rebalance" | "swap" | "transfer";
 
-export interface TriggerBlock extends BaseBlock {
-  type: BlockType.TRIGGER;
-  data: {
-    triggerType: "interval" | "drift" | "condition";
-    config: {
-      interval?: number; // seconds
-      driftThreshold?: number; // percentage
-      conditions?: string[]; // IDs of condition blocks
+    // REBALANCE: Time-based trigger (required) with optional drift threshold
+    rebalanceTrigger?: {
+      interval: number; // Required: time interval in minutes (minimum 1)
+      drift?: number;   // Optional: drift threshold in percentage
     };
+
+    // SWAP: From token to token with amount
+    swapFrom?: {
+      symbol: string;
+      name: string;
+      address: string;
+      chainId: number;
+      decimals: number;
+      logoUri?: string;
+    };
+    swapTo?: {
+      symbol: string;
+      name: string;
+      address: string;
+      chainId: number;
+      decimals: number;
+      logoUri?: string;
+    };
+    swapAmount?: number; // Amount in USD or token units
+
+    // TRANSFER: Asset to address with amount
+    transferAsset?: {
+      symbol: string;
+      name: string;
+      address: string;
+      chainId: number;
+      decimals: number;
+      logoUri?: string;
+    };
+    transferTo?: string; // Destination address
+    transferAmount?: number; // Amount in USD or token units
+
+    description?: string; // Human-readable description
   };
 }
 
-export type Block = AssetBlock | ConditionBlock | ActionBlock | TriggerBlock;
+export type Block = AssetBlock | ConditionBlock | ActionBlock;

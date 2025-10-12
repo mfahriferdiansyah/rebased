@@ -1,12 +1,20 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Canvas, CanvasHandle } from "@/components/canvas/Canvas";
 import { FloatingChatPanel } from "@/components/ai-chat/FloatingChatPanel";
 import { FloatingToolbar } from "@/components/toolbar/FloatingToolbar";
 import { FloatingWorkflowPanel } from "@/components/workflow/FloatingWorkflowPanel";
 import { LogoMarquee } from "@/components/layout/LogoMarquee";
+import { Navbar } from "@/components/layout/Navbar";
 import { useCanvas } from "@/hooks/useCanvas";
+import { useDelegation } from "@/hooks/useDelegation";
+import { useStrategy } from "@/hooks/useStrategy";
 import { Button } from "@/components/ui/button";
-import { BlockType } from "@/lib/types/blocks";
+import { useToast } from "@/hooks/use-toast";
+import { BlockType, Block, AssetBlock, ConditionBlock, ActionBlock } from "@/lib/types/blocks";
+import { AssetBlockEditModal } from "@/components/blocks/AssetBlockEditModal";
+import { ConditionBlockEditModal } from "@/components/blocks/ConditionBlockEditModal";
+import { ActionBlockEditModal } from "@/components/blocks/ActionBlockEditModal";
+import { DelegationManagerModal } from "@/components/delegation/DelegationManagerModal";
 import { Target } from "lucide-react";
 
 const Index = () => {
@@ -22,6 +30,7 @@ const Index = () => {
     handleConnectionCreate,
     handleConnectionDelete,
     handleBlockDelete,
+    handleBlockUpdate,
     createDemoStrategy,
     addBlock,
     resetCanvas,
@@ -31,6 +40,126 @@ const Index = () => {
     canUndo,
     canRedo,
   } = useCanvas();
+
+  // Delegation hook
+  const { activeDelegation } = useDelegation();
+
+  // Strategy hook for saving
+  const { saveStrategy, saving } = useStrategy();
+  const { toast } = useToast();
+
+  // Editing state for AssetBlockEditModal
+  const [editingAssetBlock, setEditingAssetBlock] = useState<AssetBlock | null>(null);
+  const [isAssetEditModalOpen, setIsAssetEditModalOpen] = useState(false);
+
+  // Editing state for ConditionBlockEditModal
+  const [editingConditionBlock, setEditingConditionBlock] = useState<ConditionBlock | null>(null);
+  const [isConditionEditModalOpen, setIsConditionEditModalOpen] = useState(false);
+
+  // Editing state for ActionBlockEditModal
+  const [editingActionBlock, setEditingActionBlock] = useState<ActionBlock | null>(null);
+  const [isActionEditModalOpen, setIsActionEditModalOpen] = useState(false);
+
+  // Delegation manager modal state
+  const [isDelegationModalOpen, setIsDelegationModalOpen] = useState(false);
+
+  // Handle block edit
+  const handleBlockEdit = (block: Block) => {
+    if (block.type === BlockType.ASSET) {
+      setEditingAssetBlock(block as AssetBlock);
+      setIsAssetEditModalOpen(true);
+    } else if (block.type === BlockType.CONDITION) {
+      setEditingConditionBlock(block as ConditionBlock);
+      setIsConditionEditModalOpen(true);
+    } else if (block.type === BlockType.ACTION) {
+      setEditingActionBlock(block as ActionBlock);
+      setIsActionEditModalOpen(true);
+    }
+  };
+
+  // Handle asset block save from edit modal
+  const handleAssetBlockSave = (data: AssetBlock['data']) => {
+    if (editingAssetBlock) {
+      // Editing existing block
+      handleBlockUpdate(editingAssetBlock.id, data);
+    } else {
+      // Creating new block
+      const position = strategy ? calculateNewBlockPosition(strategy.blocks) : { x: 400, y: 150 };
+      const newBlock: AssetBlock = {
+        id: `block-${Date.now()}`,
+        type: BlockType.ASSET,
+        position,
+        size: { width: 200, height: 150 },
+        data,
+        connections: { inputs: [], outputs: [] },
+      };
+      addBlock(newBlock);
+
+      // Center viewport on the newly added block
+      setTimeout(() => {
+        canvasRef.current?.centerOnPosition(position.x + 100, position.y + 75);
+      }, 50);
+    }
+
+    setIsAssetEditModalOpen(false);
+    setEditingAssetBlock(null);
+  };
+
+  // Handle condition block save from edit modal
+  const handleConditionBlockSave = (data: ConditionBlock['data']) => {
+    if (editingConditionBlock) {
+      // Editing existing block
+      handleBlockUpdate(editingConditionBlock.id, data);
+    } else {
+      // Creating new block
+      const position = strategy ? calculateNewBlockPosition(strategy.blocks) : { x: 400, y: 150 };
+      const newBlock: ConditionBlock = {
+        id: `block-${Date.now()}`,
+        type: BlockType.CONDITION,
+        position,
+        size: { width: 200, height: 150 },
+        data,
+        connections: { inputs: [], outputs: [] },
+      };
+      addBlock(newBlock);
+
+      // Center viewport on the newly added block
+      setTimeout(() => {
+        canvasRef.current?.centerOnPosition(position.x + 100, position.y + 75);
+      }, 50);
+    }
+
+    setIsConditionEditModalOpen(false);
+    setEditingConditionBlock(null);
+  };
+
+  // Handle action block save from edit modal
+  const handleActionBlockSave = (data: ActionBlock['data']) => {
+    if (editingActionBlock) {
+      // Editing existing block
+      handleBlockUpdate(editingActionBlock.id, data);
+    } else {
+      // Creating new block
+      const position = strategy ? calculateNewBlockPosition(strategy.blocks) : { x: 400, y: 150 };
+      const newBlock: ActionBlock = {
+        id: `block-${Date.now()}`,
+        type: BlockType.ACTION,
+        position,
+        size: { width: 200, height: 180 },
+        data,
+        connections: { inputs: [], outputs: [] },
+      };
+      addBlock(newBlock);
+
+      // Center viewport on the newly added block
+      setTimeout(() => {
+        canvasRef.current?.centerOnPosition(position.x + 100, position.y + 90);
+      }, 50);
+    }
+
+    setIsActionEditModalOpen(false);
+    setEditingActionBlock(null);
+  };
 
   // Helper function to calculate position for new block without overlaps
   const calculateNewBlockPosition = (existingBlocks: any[]) => {
@@ -81,40 +210,24 @@ const Index = () => {
   };
 
   const handleBlockAdd = (type: BlockType) => {
-    // Calculate position to avoid overlaps
-    const position = strategy ? calculateNewBlockPosition(strategy.blocks) : { x: 400, y: 150 };
+    // Open appropriate edit modal based on block type
+    if (type === BlockType.ASSET) {
+      setIsAssetEditModalOpen(true);
+      setEditingAssetBlock(null); // null means creating new, not editing
+      return;
+    }
 
-    // Create a new block of the specified type
-    const newBlock = {
-      id: `block-${Date.now()}`,
-      type,
-      position,
-      size: { width: 200, height: 150 },
-      data: type === BlockType.ASSET ? {
-        symbol: "NEW",
-        name: "New Asset",
-        initialWeight: 0,
-        icon: "💎",
-      } : type === BlockType.CONDITION ? {
-        operator: "GT" as const,
-        leftOperand: { type: "price" as const, asset: "ETH" },
-        rightOperand: { type: "value" as const, value: 0 },
-      } : type === BlockType.ACTION ? {
-        actionType: "rebalance" as const,
-        targets: [],
-      } : {
-        triggerType: "interval" as const,
-        config: { interval: 3600 },
-      },
-      connections: { inputs: [], outputs: [] },
-    };
-    addBlock(newBlock as any);
+    if (type === BlockType.CONDITION) {
+      setIsConditionEditModalOpen(true);
+      setEditingConditionBlock(null);
+      return;
+    }
 
-    // Center viewport on the newly added block for UX feedback
-    // Wait for DOM update, then center on middle of block (200x150, so center is +100, +75)
-    setTimeout(() => {
-      canvasRef.current?.centerOnPosition(position.x + 100, position.y + 75);
-    }, 50);
+    if (type === BlockType.ACTION) {
+      setIsActionEditModalOpen(true);
+      setEditingActionBlock(null);
+      return;
+    }
   };
 
   const handleAutoLayoutWithZoom = () => {
@@ -123,6 +236,48 @@ const Index = () => {
     setTimeout(() => {
       canvasRef.current?.resetZoom();
     }, 50);
+  };
+
+  // Handle strategy save
+  const handleStrategySave = async () => {
+    if (!strategy) {
+      toast({
+        title: 'No Strategy',
+        description: 'Please create a strategy first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate strategy has asset blocks
+    const assetBlocks = strategy.blocks.filter(b => b.type === BlockType.ASSET);
+    if (assetBlocks.length === 0) {
+      toast({
+        title: 'Invalid Strategy',
+        description: 'Strategy must have at least one asset block',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Get chainId from first asset block
+    const chainId = (assetBlocks[0] as AssetBlock).data.chainId;
+
+    // Validate all assets are on the same chain
+    const allSameChain = assetBlocks.every(
+      b => (b as AssetBlock).data.chainId === chainId
+    );
+    if (!allSameChain) {
+      toast({
+        title: 'Invalid Strategy',
+        description: 'All assets must be on the same chain',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Save strategy
+    await saveStrategy(strategy, chainId);
   };
 
   // Keyboard shortcuts for undo/redo
@@ -148,6 +303,9 @@ const Index = () => {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
+      {/* Navbar */}
+      <Navbar />
+
       {/* Main Canvas Area */}
       <div
         className="flex-1 relative"
@@ -173,6 +331,9 @@ const Index = () => {
               onConnectionCreate={handleConnectionCreate}
               onConnectionDelete={handleConnectionDelete}
               onBlockDelete={handleBlockDelete}
+              onBlockEdit={handleBlockEdit}
+              activeDelegation={activeDelegation}
+              onDelegationClick={() => setIsDelegationModalOpen(true)}
             />
 
             {/* Floating Toolbar */}
@@ -180,12 +341,14 @@ const Index = () => {
               strategy={strategy}
               onBlockAdd={handleBlockAdd}
               onStrategyLoad={setStrategy}
+              onStrategySave={handleStrategySave}
               onReset={resetCanvas}
               onAutoLayout={handleAutoLayoutWithZoom}
               onUndo={handleUndo}
               onRedo={handleRedo}
               canUndo={canUndo}
               canRedo={canRedo}
+              isSaving={saving}
             />
           </>
         ) : (
@@ -258,6 +421,36 @@ const Index = () => {
 
         {/* Floating Workflow Panel */}
         <FloatingWorkflowPanel strategy={strategy} />
+
+        {/* Asset Block Edit Modal */}
+        <AssetBlockEditModal
+          open={isAssetEditModalOpen}
+          onOpenChange={setIsAssetEditModalOpen}
+          blockData={editingAssetBlock?.data}
+          onSave={handleAssetBlockSave}
+        />
+
+        {/* Condition Block Edit Modal */}
+        <ConditionBlockEditModal
+          open={isConditionEditModalOpen}
+          onOpenChange={setIsConditionEditModalOpen}
+          blockData={editingConditionBlock?.data}
+          onSave={handleConditionBlockSave}
+        />
+
+        {/* Action Block Edit Modal */}
+        <ActionBlockEditModal
+          open={isActionEditModalOpen}
+          onOpenChange={setIsActionEditModalOpen}
+          blockData={editingActionBlock?.data}
+          onSave={handleActionBlockSave}
+        />
+
+        {/* Delegation Manager Modal */}
+        <DelegationManagerModal
+          open={isDelegationModalOpen}
+          onOpenChange={setIsDelegationModalOpen}
+        />
       </div>
     </div>
   );

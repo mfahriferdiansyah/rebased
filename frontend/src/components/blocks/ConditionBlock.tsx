@@ -1,9 +1,11 @@
 import React from "react";
-import { ConditionBlock as ConditionBlockType } from "@/lib/types/blocks";
+import { ConditionBlock as ConditionBlockType, Block, BlockType, AssetBlock } from "@/lib/types/blocks";
 import { GitBranch, Trash2 } from "lucide-react";
+import { TokenIcon } from "@/components/ui/token-icon";
 
 interface ConditionBlockProps {
   block: ConditionBlockType;
+  blocks: Block[]; // All blocks to look up connected assets
   zoom: number;
   isSelected?: boolean;
   isInConnectionMode?: boolean;
@@ -13,11 +15,13 @@ interface ConditionBlockProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onDelete?: () => void;
+  onEdit?: (block: ConditionBlockType) => void;
   dragOffset?: { x: number; y: number };
 }
 
 export function ConditionBlock({
   block,
+  blocks,
   zoom,
   isSelected = false,
   isInConnectionMode = false,
@@ -27,17 +31,19 @@ export function ConditionBlock({
   onMouseEnter,
   onMouseLeave,
   onDelete,
+  onEdit,
   dragOffset
 }: ConditionBlockProps) {
-  const { operator, leftOperand, rightOperand, description } = block.data;
+  const { conditionType, operator, valueUSD } = block.data;
 
-  const operatorSymbol = {
-    GT: ">",
-    LT: "<",
-    GTE: "≥",
-    LTE: "≤",
-    EQ: "=",
-  }[operator];
+  // Get connected asset blocks
+  const connectedAssets = React.useMemo(() => {
+    return block.connections.inputs
+      .map(inputId => blocks.find(b => b.id === inputId))
+      .filter((b): b is AssetBlock => b?.type === BlockType.ASSET);
+  }, [block.connections.inputs, blocks]);
+
+  const operatorSymbol = operator === "GT" ? ">" : "<";
 
   const actualX = block.position.x + (dragOffset?.x || 0);
   const actualY = block.position.y + (dragOffset?.y || 0);
@@ -47,7 +53,15 @@ export function ConditionBlock({
     left: 0,
     transform: `translate(${actualX}px, ${actualY}px)`,
     width: block.size.width,
-    height: block.size.height,
+    minHeight: block.size.height,
+  };
+
+  // Get label text based on condition type (no asset name displayed)
+  const getLabel = () => {
+    if (conditionType === "price") return "Price";
+    if (conditionType === "portfolioValue") return "Portfolio";
+    if (conditionType === "assetValue") return "Value";
+    return "Condition";
   };
 
   return (
@@ -65,6 +79,10 @@ export function ConditionBlock({
       onMouseDown={onMouseDown}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onEdit?.(block);
+      }}
     >
       {/* Delete button - only visible when selected */}
       {isSelected && onDelete && (
@@ -90,24 +108,44 @@ export function ConditionBlock({
       </div>
 
       {/* Condition display */}
-      <div className="bg-gray-50 rounded p-3 text-center border border-gray-200">
-        <div className="text-xs font-medium text-gray-600">
-          {leftOperand.type === "price" && `${leftOperand.asset} Price`}
-          {leftOperand.type === "allocation" && `${leftOperand.asset} %`}
+      <div className="bg-gray-50 rounded p-2.5 border border-gray-200 text-center">
+        {/* Connected asset icons */}
+        {connectedAssets.length > 0 ? (
+          <div className="flex items-center justify-center gap-1 mb-1.5 flex-wrap">
+            {connectedAssets.slice(0, 5).map((asset) => (
+              <TokenIcon
+                key={asset.id}
+                address={asset.data.address}
+                chainId={asset.data.chainId}
+                symbol={asset.data.symbol}
+                logoUri={asset.data.logoUri}
+                size={20}
+                showChainBadge={false}
+              />
+            ))}
+            {connectedAssets.length > 5 && (
+              <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-gray-600">+{connectedAssets.length - 5}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-gray-400 mb-1.5">No assets</div>
+        )}
+
+        <div className="text-xs font-medium text-gray-600 mb-1">
+          {getLabel()}
         </div>
-        <div className="text-2xl font-bold text-gray-900 my-1">
-          {operatorSymbol}
-        </div>
-        <div className="text-base font-bold text-gray-800">
-          {rightOperand.type === "value" && `$${rightOperand.value}`}
-          {rightOperand.type === "percentage" && `${rightOperand.value}%`}
+
+        <div className="flex items-center justify-center gap-1.5">
+          <div className="text-xl font-bold text-gray-900">
+            {operatorSymbol}
+          </div>
+          <div className="text-sm font-bold text-gray-800 truncate px-1 max-w-[100px]">
+            ${valueUSD.toLocaleString()}
+          </div>
         </div>
       </div>
-
-      {description && (
-        <div className="mt-2 text-xs text-gray-600 truncate">{description}</div>
-      )}
-
     </div>
   );
 }

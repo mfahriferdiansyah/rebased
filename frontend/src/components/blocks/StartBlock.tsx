@@ -1,5 +1,7 @@
 import React from "react";
-import { Play } from "lucide-react";
+import { Play, Shield, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import type { Delegation } from "@/lib/types/delegation";
 
 interface StartBlockProps {
   position: { x: number; y: number };
@@ -13,6 +15,10 @@ interface StartBlockProps {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   dragOffset?: { x: number; y: number };
+
+  // Delegation props
+  activeDelegation?: Delegation | null;
+  onDelegationClick?: () => void;
 }
 
 export function StartBlock({
@@ -26,7 +32,9 @@ export function StartBlock({
   onMouseDown,
   onMouseEnter,
   onMouseLeave,
-  dragOffset
+  dragOffset,
+  activeDelegation,
+  onDelegationClick,
 }: StartBlockProps) {
   const actualX = position.x + (dragOffset?.x || 0);
   const actualY = position.y + (dragOffset?.y || 0);
@@ -38,6 +46,8 @@ export function StartBlock({
     width: size.width,
     height: size.height,
   };
+
+  const hasDelegation = !!activeDelegation;
 
   return (
     <div
@@ -65,12 +75,57 @@ export function StartBlock({
         </div>
       </div>
 
-      {/* Info */}
-      <div className="text-center py-2 bg-gray-50 rounded border border-gray-200">
-        <div className="text-xs font-medium text-gray-700">
-          Portfolio Entry Point
+      {/* Delegation Status */}
+      <div
+        className={`rounded border p-2 cursor-pointer transition-colors ${
+          hasDelegation
+            ? "bg-green-50 border-green-200 hover:bg-green-100"
+            : "bg-orange-50 border-orange-200 hover:bg-orange-100"
+        }`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelegationClick?.();
+        }}
+      >
+        <div className="flex items-center gap-2">
+          {hasDelegation ? (
+            <>
+              <Shield className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-green-900 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  Delegation Active
+                </div>
+                <div className="text-[10px] font-mono text-green-700 truncate">
+                  {activeDelegation.delegateAddress.slice(0, 8)}...
+                  {activeDelegation.delegateAddress.slice(-6)}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="text-xs font-medium text-orange-900">
+                  No Delegation
+                </div>
+                <div className="text-[10px] text-orange-700">
+                  Click to setup
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Chain Badge (if delegation exists) */}
+      {hasDelegation && (
+        <div className="mt-2">
+          <Badge variant="outline" className="text-[10px]">
+            {activeDelegation.chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia'}
+          </Badge>
+        </div>
+      )}
 
     </div>
   );
