@@ -10,9 +10,11 @@ export const RebalanceExecutorABI = [
     inputs: [
       { name: 'userAccount', type: 'address', internalType: 'address' },
       { name: 'strategyId', type: 'uint256', internalType: 'uint256' },
+      { name: 'tokensIn', type: 'address[]', internalType: 'address[]' },
       { name: 'swapTargets', type: 'address[]', internalType: 'address[]' },
       { name: 'swapCallDatas', type: 'bytes[]', internalType: 'bytes[]' },
       { name: 'minOutputAmounts', type: 'uint256[]', internalType: 'uint256[]' },
+      { name: 'nativeValues', type: 'uint256[]', internalType: 'uint256[]' },
       { name: 'permissionContexts', type: 'bytes[]', internalType: 'bytes[]' },
       { name: 'modes', type: 'bytes32[]', internalType: 'bytes32[]' },
     ],

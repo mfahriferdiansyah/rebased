@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ChainService } from '@app/blockchain';
 import { SupportedChain } from '@app/blockchain/chains';
 import { ExecutionPlan, SwapPlan } from '../strategy/types/strategy-logic.types';
 import axios, { AxiosInstance } from 'axios';
@@ -78,6 +79,7 @@ export class DexService {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly chain: ChainService,
     private readonly uniswapV2: UniswapV2Service,
     private readonly monorail: MonorailService,
   ) {
@@ -137,36 +139,196 @@ export class DexService {
   }
 
   /**
+   * Get token decimals from contract
+   */
+  private async getTokenDecimals(
+    tokenAddress: string,
+    chain: SupportedChain,
+  ): Promise<number> {
+    try {
+      const client = this.chain.getPublicClient(chain as any);
+
+      // Native token always has 18 decimals
+      if (
+        tokenAddress === '0x0000000000000000000000000000000000000000' ||
+        tokenAddress.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+      ) {
+        return 18;
+      }
+
+      const decimals = await client.readContract({
+        address: tokenAddress as `0x${string}`,
+        abi: [
+          {
+            name: 'decimals',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [],
+            outputs: [{ name: '', type: 'uint8' }],
+          },
+        ],
+        functionName: 'decimals',
+        args: [],
+        authorizationList: undefined,
+      } as any);
+
+      return Number(decimals);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to fetch decimals for ${tokenAddress}, defaulting to 18: ${error.message}`,
+      );
+      return 18; // Default fallback
+    }
+  }
+
+  /**
    * Get swaps for Monad using Monorail (primary) with Uniswap V2 fallback
+   *
+   * NATIVE TOKEN HANDLING:
+   * - Native MON (0x0000...0000) cannot be swapped directly due to contract limitation
+   * - Solution: Wrap MON → WMON first, then swap WMON → target token
+   * - This adds an extra step but works with current contract architecture
    */
   private async getMonadSwaps(executionPlan: ExecutionPlan, userAccount: string): Promise<any[]> {
     const allSwapData: any[] = [];
+    const NATIVE_TOKEN = '0x0000000000000000000000000000000000000000';
+    const WMON_ADDRESS = '0xb5a30b0fdc5ea94a52fdc42e3e9760cb8449fb37'; // Wrapped MON on Monad testnet
 
     for (const swap of executionPlan.swaps) {
       this.logger.debug(
         `Getting swap quote for Monad: ${swap.fromToken} -> ${swap.toToken}`,
       );
 
+      // WORKAROUND: If swapping FROM native MON, wrap it first then swap WMON
+      if (swap.fromToken.toLowerCase() === NATIVE_TOKEN.toLowerCase()) {
+        this.logger.log('Native MON detected - will wrap to WMON first, then swap WMON');
+
+        // Step 1: Add WRAP transaction (MON → WMON)
+        // NOTE: This requires the RebalanceExecutor contract to support native value passing
+        // Current contract limitation: hardcodes value=0 in DeleGator.execute() call
+        // This will demonstrate the need for contract upgrade
+        const wrapData = {
+          fromToken: NATIVE_TOKEN,
+          toToken: WMON_ADDRESS,
+          target: WMON_ADDRESS, // WMON contract
+          data: '0xd0e30db0', // deposit() function selector - WMON9.deposit() payable
+          value: swap.fromAmount.toString(), // Amount of MON to wrap (needs contract support!)
+          minOutput: swap.fromAmount, // Wrapping is 1:1
+          aggregator: 'WMON Wrapper',
+          priceImpact: 0,
+          isWrap: true, // Flag for special handling
+        };
+        allSwapData.push(wrapData);
+        this.logger.warn(`Added WRAP step (requires contract upgrade): ${swap.fromAmount} MON → WMON`);
+
+        // Step 2: Get quote for WMON → target token (instead of MON → target)
+        const wmonSwap = {
+          ...swap,
+          fromToken: WMON_ADDRESS, // Use WMON instead of native MON
+        };
+
+        let swapData: any = null;
+
+        try {
+          this.logger.debug('Trying Monorail for WMON swap...');
+          const decimalsIn = await this.getTokenDecimals(wmonSwap.fromToken, 'monad');
+          const monorailQuote = await this.monorail.getQuote(
+            wmonSwap.fromToken,
+            wmonSwap.toToken,
+            wmonSwap.fromAmount,
+            userAccount,
+            decimalsIn,
+          );
+
+          if (monorailQuote) {
+            const txData = this.monorail.buildSwapTransaction(monorailQuote);
+
+            swapData = {
+              fromToken: wmonSwap.fromToken,
+              toToken: wmonSwap.toToken,
+              target: txData.target,
+              data: txData.calldata,
+              value: '0', // No native tokens for ERC-20 swap
+              minOutput: txData.minOutput,
+              aggregator: 'Monorail',
+              priceImpact: monorailQuote.priceImpact,
+            };
+
+            this.logger.log(
+              `Monorail quote (WMON): ${monorailQuote.amountOut} output (${monorailQuote.priceImpact.toFixed(2)}% impact)`,
+            );
+          }
+        } catch (error) {
+          this.logger.warn(`Monorail quote failed for WMON: ${error.message}`);
+        }
+
+        if (!swapData) {
+          this.logger.debug('Falling back to Uniswap V2 for WMON swap...');
+          const uniswapQuote = await this.uniswapV2.getQuote(
+            wmonSwap.fromToken,
+            wmonSwap.toToken,
+            wmonSwap.fromAmount,
+            'monad',
+          );
+
+          if (uniswapQuote) {
+            const txData = this.uniswapV2.buildSwapTransaction(
+              uniswapQuote,
+              userAccount,
+              100,
+            );
+
+            swapData = {
+              fromToken: wmonSwap.fromToken,
+              toToken: wmonSwap.toToken,
+              target: txData.target,
+              data: txData.calldata,
+              value: '0', // No native tokens for ERC-20 swap
+              minOutput: txData.minOutput,
+              aggregator: 'Uniswap V2 (Fallback)',
+              priceImpact: uniswapQuote.priceImpact,
+            };
+
+            this.logger.log(
+              `Uniswap V2 fallback quote (WMON): ${uniswapQuote.amountOut} output (${uniswapQuote.priceImpact.toFixed(2)}% impact)`,
+            );
+          }
+        }
+
+        if (swapData) {
+          allSwapData.push(swapData);
+        } else {
+          this.logger.error(`Failed to get quote for WMON->${swap.toToken}`);
+          throw new Error(`No quotes available for WMON->${swap.toToken}`);
+        }
+
+        continue; // Skip to next swap
+      }
+
+      // NORMAL PATH: Non-native token swaps
       let swapData: any = null;
 
       // Try Monorail first (primary DEX for Monad)
       try {
         this.logger.debug('Trying Monorail...');
+        const decimalsIn = await this.getTokenDecimals(swap.fromToken, 'monad');
         const monorailQuote = await this.monorail.getQuote(
           swap.fromToken,
           swap.toToken,
           swap.fromAmount,
           userAccount,
-          18, // Default to 18 decimals, ideally should be fetched per token
+          decimalsIn,
         );
 
         if (monorailQuote) {
           const txData = this.monorail.buildSwapTransaction(monorailQuote);
 
           swapData = {
+            fromToken: swap.fromToken,
+            toToken: swap.toToken,
             target: txData.target,
             data: txData.calldata,
-            value: txData.value,
+            value: txData.value || '0',
             minOutput: txData.minOutput,
             aggregator: 'Monorail',
             priceImpact: monorailQuote.priceImpact,
@@ -198,8 +360,11 @@ export class DexService {
           );
 
           swapData = {
+            fromToken: swap.fromToken,
+            toToken: swap.toToken,
             target: txData.target,
             data: txData.calldata,
+            value: '0',
             minOutput: txData.minOutput,
             aggregator: 'Uniswap V2 (Fallback)',
             priceImpact: uniswapQuote.priceImpact,
@@ -285,6 +450,8 @@ export class DexService {
 
           // Convert to format expected by executor
           allSwapData.push({
+            fromToken: swap.fromToken,
+            toToken: swap.toToken,
             target: bestQuote.target,
             data: bestQuote.calldata,
             minOutput: bestQuote.toAmount,

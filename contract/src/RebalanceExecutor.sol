@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -11,7 +11,8 @@ import "./interfaces/IPythOracle.sol";
 import "./interfaces/IUniswapHelper.sol";
 import "./interfaces/IRebalancerConfig.sol";
 import "./delegation/interfaces/IDelegationManager.sol";
-import { Delegation, ModeCode } from "@delegation-framework/utils/Types.sol";
+import { Delegation, ModeCode, Execution } from "@delegation-framework/utils/Types.sol";
+import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import "./delegation/types/DelegationTypes.sol";
 
 /**
@@ -53,6 +54,15 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     event DEXApprovalUpdated(address indexed dex, bool approved);
     event EmergencyPaused(address indexed caller);
     event EmergencyUnpaused(address indexed caller);
+
+    // DEBUG: Detailed logging events for error tracing
+    event DebugRebalanceStarted(address indexed user, uint256 indexed strategyId, address sender);
+    event DebugStrategyFetched(address indexed user, uint256 indexed strategyId, bool isActive, address owner);
+    event DebugDeleGatorValidated(address indexed user, address delegatorOwner);
+    event DebugDriftCalculated(uint256 drift, uint256 maxDrift, uint256 portfolioValue);
+    event DebugSwapValidationPassed(uint256 swapCount);
+    event DebugBeforeDelegationCall(uint256 permissionContextsLength, uint256 modesLength, uint256 executionLength);
+    event DebugAfterDelegationCall(uint256 driftBefore, uint256 driftAfter, uint256 valueBefore, uint256 valueAfter);
 
     // Errors
     error StrategyNotActive();
@@ -161,9 +171,11 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * @notice Execute a rebalance for a user's strategy
      * @param userAccount User's MetaMask DeleGator account address
      * @param strategyId Strategy ID to rebalance
+     * @param tokensIn Tokens being sold in each swap (for approval)
      * @param swapTargets Target contracts for each swap (from DEX aggregator)
      * @param swapCallDatas Pre-calculated optimal swap calldata (from off-chain DEX aggregator)
      * @param minOutputAmounts Minimum output amounts for slippage protection (SECURITY FIX HIGH-2)
+     * @param nativeValues Native token amounts to send with each swap (for native token swaps/wraps)
      * @param permissionContexts Encoded delegations (user's signed delegation)
      * @param modes Execution modes for DelegationManager
      *
@@ -177,18 +189,26 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * - HIGH-3: Validates swaps improve portfolio allocation
      * - HIGH-5: Validates final balances match expected values
      * - MEDIUM-1: Can be paused in emergency
+     * - NEW: Supports native token swaps via nativeValues parameter
+     * - NEW: Automatically approves tokens before swaps
      */
     function rebalance(
         address userAccount,
         uint256 strategyId,
+        address[] calldata tokensIn,
         address[] calldata swapTargets,
         bytes[] calldata swapCallDatas,
         uint256[] calldata minOutputAmounts,
+        uint256[] calldata nativeValues,
         bytes[] calldata permissionContexts,
         ModeCode[] calldata modes
     ) external payable nonReentrant whenNotPaused {
+        // DEBUG: Log function entry
+        emit DebugRebalanceStarted(userAccount, strategyId, msg.sender);
+
         // 1. Get strategy from registry
         StrategyLibrary.Strategy memory strategy = registry.getStrategy(userAccount, strategyId);
+        emit DebugStrategyFetched(userAccount, strategyId, strategy.isActive, strategy.owner);
 
         // 2. Validate userAccount is a DeleGator smart account
         if (!DelegationTypes.isDeleGator(userAccount)) {
@@ -200,6 +220,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         if (delegatorOwner == address(0) || delegatorOwner != strategy.owner) {
             revert InvalidDeleGatorOwner();
         }
+        emit DebugDeleGatorValidated(userAccount, delegatorOwner);
 
         // 4. Validate strategy
         if (!strategy.isActive) {
@@ -223,10 +244,13 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         if (drift < maxDrift) {
             revert DriftBelowThreshold();
         }
+        emit DebugDriftCalculated(drift, maxDrift, portfolioValueBefore);
 
         // 7. Validate swap data
+        require(tokensIn.length == swapTargets.length, "TokensIn length mismatch");
         require(swapTargets.length == swapCallDatas.length, "Swap arrays length mismatch");
         require(swapTargets.length == minOutputAmounts.length, "Min output amounts length mismatch");
+        require(swapTargets.length == nativeValues.length, "Native values length mismatch");
         require(swapTargets.length > 0, "No swaps provided");
 
         // SECURITY FIX HIGH-1: Validate all swap targets are approved DEXs
@@ -242,18 +266,44 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 revert InsufficientSlippageProtection();
             }
         }
+        emit DebugSwapValidationPassed(swapTargets.length);
 
-        // 8. Build execution calldata for each swap
+        // 8. Build execution calldata for each swap using MetaMask's Execution format
         // Bot provides pre-calculated optimal routes from DEX aggregators
-        bytes[] memory executionCallDatas = new bytes[](swapTargets.length);
+        // Native values allow DeleGator to send its own native tokens with swaps/wraps
+
+        // Build Execution[] array with approval + swap for each token
+        // MetaMask's DelegationManager expects ERC-7579 Execution format
+        Execution[] memory executions = new Execution[](swapTargets.length * 2);
+        uint256 idx = 0;
 
         for (uint256 i = 0; i < swapTargets.length; i++) {
-            // Wrap the pre-calculated swap calldata in DeleGator.execute() call
-            executionCallDatas[i] =
-                abi.encodeWithSignature("execute(address,uint256,bytes)", swapTargets[i], 0, swapCallDatas[i]);
+            // 1. Approval execution: DeleGator approves DEX to spend tokens
+            executions[idx++] = Execution({
+                target: tokensIn[i],        // Token contract address
+                value: 0,                   // No native value for approval
+                callData: abi.encodeWithSignature(
+                    "approve(address,uint256)",
+                    swapTargets[i],
+                    type(uint256).max
+                )
+            });
+
+            // 2. Swap execution: DeleGator calls DEX to execute swap
+            executions[idx++] = Execution({
+                target: swapTargets[i],     // DEX contract address
+                value: nativeValues[i],     // Native token amount (for native swaps/wraps)
+                callData: swapCallDatas[i]  // Pre-calculated optimal swap route
+            });
         }
 
+        // Encode executions using MetaMask's ExecutionLib (ERC-7579 format)
+        // This produces the correct format for DelegationManager.redeemDelegations()
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
         // 9. Execute via DelegationManager
+        emit DebugBeforeDelegationCall(permissionContexts.length, modes.length, executionCallDatas.length);
         try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
             // SECURITY FIX HIGH-3 & HIGH-5: Validate swaps improved allocation
             uint256[] memory currentWeightsAfter =
@@ -270,6 +320,8 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
             uint256 maxSlippageBps = config.getMaxSlippage();
             uint256 minAcceptableValue = (portfolioValueBefore * (10000 - maxSlippageBps)) / 10000;
+
+            emit DebugAfterDelegationCall(drift, driftAfter, portfolioValueBefore, portfolioValueAfter);
 
             if (portfolioValueAfter < minAcceptableValue) {
                 revert BalanceValidationFailed();
@@ -348,7 +400,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * @return Version string
      */
     function getVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.1.0-debug";
     }
 
     /**

@@ -38,22 +38,17 @@ export class MonitorService {
     try {
       this.logger.debug('Starting strategy monitoring cycle');
 
-      // Get all active strategies with active delegations
+      // Get all active strategies with delegatorAddress (no delegation required)
       const strategies = await this.prisma.strategy.findMany({
         where: {
           isActive: true,
-          delegations: {
-            some: {
-              isActive: true,
-            },
+          isDeployed: true, // CRITICAL: Only monitor strategies that are deployed on-chain
+          delegatorAddress: {
+            not: null, // Only monitor strategies with DeleGator smart contract
           },
         },
         include: {
           user: true,
-          delegations: {
-            where: { isActive: true },
-            take: 1,
-          },
           rebalances: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -80,6 +75,8 @@ export class MonitorService {
    */
   private async checkStrategy(strategy: any) {
     try {
+      this.logger.debug(`🔍 Checking strategy ${strategy.id}...`);
+
       // Check if strategy has strategyLogic
       if (!strategy.strategyLogic) {
         this.logger.warn(
@@ -93,7 +90,14 @@ export class MonitorService {
       const timeSinceLastRebalance = Date.now() - lastRebalance.getTime();
       const intervalMs = Number(strategy.rebalanceInterval) * 1000;
 
+      this.logger.debug(
+        `Strategy ${strategy.id}: timeSinceLastRebalance=${Math.floor(timeSinceLastRebalance / 1000)}s, intervalMs=${intervalMs / 1000}s, lastRebalance=${lastRebalance.toISOString()}`,
+      );
+
       if (timeSinceLastRebalance < intervalMs) {
+        this.logger.debug(
+          `Strategy ${strategy.id}: Not yet time to rebalance (${Math.floor((intervalMs - timeSinceLastRebalance) / 1000)}s remaining)`,
+        );
         return; // Not yet time to rebalance
       }
 

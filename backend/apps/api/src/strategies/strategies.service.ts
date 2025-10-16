@@ -43,9 +43,9 @@ export class StrategiesService {
       `blockchain.${chainName}.contracts.strategyRegistry`,
     );
 
-    // TODO: Call StrategyRegistry.createStrategy() on-chain
-    // For now, generate a mock strategyId
-    const strategyId = BigInt(Date.now());
+    // Use provided strategyId (from frontend on-chain deployment) OR generate one
+    // Frontend should deploy on-chain FIRST, then pass the strategyId here
+    const strategyId = dto.strategyId ? BigInt(dto.strategyId) : BigInt(Date.now());
 
     // Ensure user exists in database (auto-register on first strategy creation)
     await this.prisma.user.upsert({
@@ -67,9 +67,14 @@ export class StrategiesService {
         tokens: dto.tokens.map((t) => t.toLowerCase()),
         weights: dto.weights,
         rebalanceInterval: BigInt(dto.rebalanceInterval),
+        delegatorAddress: dto.delegatorAddress?.toLowerCase() || null,
         strategyLogic: dto.strategyLogic || null,
         version: '1.0',
         isActive: true,
+        // Mark as deployed if strategyId was provided (meaning frontend deployed on-chain first)
+        isDeployed: !!dto.strategyId,
+        // Save deployment transaction hash if provided
+        deployTxHash: dto.deployTxHash || null,
       },
     });
 
@@ -151,6 +156,7 @@ export class StrategiesService {
     const updated = await this.prisma.strategy.update({
       where: { id },
       data: {
+        ...(dto.delegatorAddress && { delegatorAddress: dto.delegatorAddress.toLowerCase() }),
         ...(dto.weights && { weights: dto.weights }),
         ...(dto.rebalanceInterval && { rebalanceInterval: BigInt(dto.rebalanceInterval) }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),

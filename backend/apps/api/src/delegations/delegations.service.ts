@@ -40,6 +40,7 @@ export class DelegationsService {
 
   /**
    * EIP-712 types for delegation (MetaMask Delegation Framework v1.3.0)
+   * NOTE: MetaMask v1.3.0 does NOT include a 'deadline' field in the Delegation struct
    */
   private getDelegationTypes() {
     return {
@@ -49,7 +50,6 @@ export class DelegationsService {
         { name: 'authority', type: 'bytes32' },
         { name: 'caveats', type: 'Caveat[]' },
         { name: 'salt', type: 'uint256' },
-        { name: 'deadline', type: 'uint256' },
       ],
       Caveat: [
         { name: 'enforcer', type: 'address' },
@@ -70,6 +70,16 @@ export class DelegationsService {
       const domain = this.getDomain(dto.chainId);
       const types = this.getDelegationTypes();
 
+      // DEBUG: Log signature recovery inputs
+      console.log('🔍 BACKEND - Signature Recovery Debug:');
+      console.log('  chainId:', dto.chainId);
+      console.log('  signature:', dto.signature);
+      console.log('  delegationData:', JSON.stringify(dto.delegationData, null, 2));
+      console.log('  domain:', JSON.stringify(domain, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+      , 2));
+      console.log('  types:', JSON.stringify(types, null, 2));
+
       try {
         recoveredAddress = await recoverTypedDataAddress({
           domain,
@@ -78,7 +88,10 @@ export class DelegationsService {
           message: dto.delegationData,
           signature: dto.signature as `0x${string}`,
         });
+
+        console.log('✅ BACKEND - Recovered address:', recoveredAddress);
       } catch (error) {
+        console.error('❌ BACKEND - Recovery failed:', error);
         throw new BadRequestException(`Failed to recover address from signature: ${error.message}`);
       }
     } else {
@@ -95,8 +108,36 @@ export class DelegationsService {
         throw new NotFoundException('Strategy not found');
       }
 
-      if (strategy.userAddress !== recoveredAddress.toLowerCase()) {
-        throw new ForbiddenException('You do not own this strategy');
+      // New architecture validation:
+      // - strategy.userAddress = EOA owner (should match recovered address from signature)
+      // - strategy.delegatorAddress = DeleGator smart contract (should match delegation.delegator)
+
+      // Verify EOA ownership
+      const isOwner = strategy.userAddress === recoveredAddress.toLowerCase();
+
+      if (!isOwner) {
+        throw new ForbiddenException(
+          `Strategy ownership mismatch. Strategy is owned by ${strategy.userAddress}, ` +
+          `but delegation was signed by ${recoveredAddress}`
+        );
+      }
+
+      // Verify DeleGator is set - REQUIRED for production architecture
+      if (!strategy.delegatorAddress) {
+        throw new BadRequestException(
+          `Strategy ${strategy.id} does not have a DeleGator smart account configured. ` +
+          `Please complete the SmartAccountStep in the wizard first to create/link a DeleGator.`
+        );
+      }
+
+      // Verify DeleGator match
+      const delegatorMatches = strategy.delegatorAddress === dto.delegationData.delegator.toLowerCase();
+
+      if (!delegatorMatches) {
+        throw new BadRequestException(
+          `DeleGator mismatch. Strategy uses DeleGator ${strategy.delegatorAddress}, ` +
+          `but delegation is for ${dto.delegationData.delegator}`
+        );
       }
 
       if (strategy.chainId !== dto.chainId) {

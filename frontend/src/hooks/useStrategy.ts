@@ -10,9 +10,10 @@ import { BlockType } from '@/lib/types/blocks';
 import type { AssetBlock, ActionBlock } from '@/lib/types/blocks';
 import { useToast } from './use-toast';
 import { useAuth } from './useAuth';
-import { writeContract, waitForTransactionReceipt } from '@wagmi/core';
+import { writeContract } from '@wagmi/core';
 import { wagmiConfig } from '@/lib/wagmi';
-import { StrategyRegistryABI, STRATEGY_REGISTRY_ADDRESS } from '@/lib/abis/StrategyRegistry';
+import { StrategyRegistryABI, getStrategyRegistryAddress } from '@/lib/abis/StrategyRegistry';
+import { waitForTransactionReceiptWithRetry } from '@/lib/utils/transaction-receipt';
 
 /**
  * Strategy Hook - Production Quality
@@ -300,6 +301,15 @@ export function useStrategy(chainId?: number) {
         return null;
       }
 
+      if (!savedStrategy.delegatorAddress) {
+        toast({
+          title: 'Invalid Strategy',
+          description: 'Strategy must have a DeleGator address',
+          variant: 'destructive',
+        });
+        return null;
+      }
+
       try {
         setDeploying(true);
 
@@ -338,23 +348,21 @@ export function useStrategy(chainId?: number) {
         // Generate unique strategy ID (timestamp-based)
         const strategyId = BigInt(Date.now());
 
-        // Get contract address for this chain
-        const registryAddress = STRATEGY_REGISTRY_ADDRESS[savedStrategy.chainId];
-        if (!registryAddress) {
-          throw new Error(`StrategyRegistry not deployed on chain ${savedStrategy.chainId}`);
-        }
+        // Get contract address for this chain (with validation)
+        const registryAddress = getStrategyRegistryAddress(savedStrategy.chainId);
 
         toast({
           title: 'Confirm transaction...',
           description: 'Please approve the transaction in your wallet',
         });
 
-        // Call contract
+        // Call contract - NEW SIGNATURE WITH DELEGATOR
         const hash = await writeContract(wagmiConfig, {
           address: registryAddress,
           abi: StrategyRegistryABI,
           functionName: 'createStrategy',
           args: [
+            savedStrategy.delegatorAddress as `0x${string}`, // First parameter: DeleGator smart account address
             strategyId,
             tokens,
             weights,
@@ -368,8 +376,8 @@ export function useStrategy(chainId?: number) {
           description: `Waiting for confirmation... Tx: ${hash.slice(0, 10)}...`,
         });
 
-        // Wait for confirmation
-        const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
+        // Wait for confirmation with retry logic (3 attempts, 3s delay)
+        const receipt = await waitForTransactionReceiptWithRetry(wagmiConfig, hash, 3, 3000);
 
         if (receipt.status !== 'success') {
           throw new Error('Transaction failed');

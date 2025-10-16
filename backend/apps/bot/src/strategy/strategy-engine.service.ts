@@ -63,9 +63,11 @@ export class StrategyEngineService {
       );
 
       // Step 2: Analyze portfolio state
+      // IMPORTANT: Use delegatorAddress (DeleGator smart account) NOT user.address (EOA)
+      // All funds are stored in the DeleGator, not the user's EOA!
       const portfolioState = await this.portfolioAnalyzer.analyzePortfolio(
         strategy,
-        dbStrategy.user.address,
+        dbStrategy.delegatorAddress || dbStrategy.user.address, // Fallback to user if no delegator
         dbStrategy.chainId,
       );
 
@@ -172,9 +174,10 @@ export class StrategyEngineService {
 
       const driftThreshold = rebalanceAction.data.rebalanceTrigger?.drift || 500; // Default 5%
 
+      // IMPORTANT: Use delegatorAddress (DeleGator smart account) NOT user.address (EOA)
       const portfolioState = await this.portfolioAnalyzer.analyzePortfolio(
         strategy,
-        dbStrategy.user.address,
+        dbStrategy.delegatorAddress || dbStrategy.user.address, // Fallback to user if no delegator
         dbStrategy.chainId,
       );
 

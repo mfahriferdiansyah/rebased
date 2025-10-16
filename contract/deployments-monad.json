@@ -1,20 +1,15 @@
 {
   "monad": {
-    "pythOracle": "0xf1B7083a8E624038Befe432EEBBF2a8f3aa47D22",
-    "pythOracleImpl": "0x419DF9562Cebd829a372CBD0CAE9506Ce7B45f47",
-    "rebalancerConfig": "0xC35D7fA8f72d72329af11bDD9c1f26930f292A0b",
-    "rebalancerConfigImpl": "0xaAF507E56A0D5E273083c126B43535cf17cEe4CC",
-    "uniswapHelper": "0xB28D94A601D44cef3ECB533d76877386873C8498",
-    "uniswapHelperImpl": "0x1B866048DFF3cB9612037EFe1FB7BC3dc635ABA2",
-    "delegationManager": "0x96a355552bBAbBAA0E36072e836d5eD9909C452f",
-    "allowedTargetsEnforcer": "0x5c9B081adc4d68f9c298336F97df6DE50C50eBd2",
-    "allowedMethodsEnforcer": "0x7F28e5d4a3Ab18e01Dd894068dCc84f141DA81CE",
-    "timestampEnforcer": "0x0098d2Ab3D9Ea0DcFa232da15Dffbaadb1592927",
-    "limitedCallsEnforcer": "0xB6E8f0Ce94D90f9fe7a0AbfE2Ed23C318d472e70",
-    "nativeTokenPaymentEnforcer": "0xe666E145ed5d1D765E7C3ebbFC53638f3204877b",
-    "strategyRegistry": "0x6655e6ee9a1BcF91047C9c0b1f4bAf56E2cfd146",
-    "strategyRegistryImpl": "0x06fA8D1a9c5D692e84Dd3d401c0eC6B2b35AA6ab",
-    "rebalanceExecutor": "0xc5bd44d66d3cCe2D534972A749060472e7Ec78c9",
-    "rebalanceExecutorImpl": "0xf0f2eaD4554Fe532B0D6f81952e6A9eFC54afE0a"
+    "pythOracle": "0xa6E97FC89563276C713213e517E7DF3AD8F96E29",
+    "pythOracleImpl": "0x38963106D06a18Dba899eE4005aA894941Be0B92",
+    "rebalancerConfig": "0x4877b731bbAA53bE1c3a7D88a5ee99Ed12bedA7B",
+    "rebalancerConfigImpl": "0xc158da6a0f1340bEAE186781D76117192549d561",
+    "uniswapHelper": "0x1605553be6F2A98e966314EE33a28D679Ee6c3B1",
+    "uniswapHelperImpl": "0xe46E23CE7D7F30Eb7751aa4E87c8a9b74a3C594b",
+    "delegationManager": "0xa0D4c1e28B44A1703eEb71461A8Ab9cF84D3b394",
+    "strategyRegistry": "0xf883d1f951A53D241B866ee0d53669AC11D4aD3f",
+    "strategyRegistryImpl": "0xa62A000c9e8F95d264FD2Ce830E4904dBe4D014c",
+    "rebalanceExecutor": "0xB2f77e9354f88005fc9414B107c9642373A0af7c",
+    "rebalanceExecutorImpl": "0x993ED3c5e3260771339Fbbf0d0EBd99D76b6207E"
   }
 }

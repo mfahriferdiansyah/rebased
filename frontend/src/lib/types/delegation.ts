@@ -13,9 +13,11 @@ export interface Caveat {
 // Core delegation structure (ERC-7710)
 export interface DelegationData {
   delegate: `0x${string}`;   // Bot executor address
+  delegator: `0x${string}`;  // DeleGator smart account address
   authority: `0x${string}`;  // Parent delegation hash (0x0 for root)
   caveats: Caveat[];         // Restrictions array
   salt: bigint;              // Unique salt to prevent collision
+  deadline: bigint;          // Expiration timestamp (0 = no expiration)
 }
 
 // Full delegation with signature
@@ -65,9 +67,11 @@ export interface DelegationDomain {
 }
 
 // EIP-712 Types (matches backend DelegationsService.getDelegationTypes())
+// NOTE: MetaMask Delegation Framework v1.3.0 does NOT include 'deadline' field
 export const DELEGATION_TYPES = {
   Delegation: [
     { name: 'delegate', type: 'address' },
+    { name: 'delegator', type: 'address' },
     { name: 'authority', type: 'bytes32' },
     { name: 'caveats', type: 'Caveat[]' },
     { name: 'salt', type: 'uint256' },

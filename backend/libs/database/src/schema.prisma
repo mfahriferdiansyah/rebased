@@ -36,7 +36,8 @@ model Strategy {
   id                String      @id @default(uuid())
   chainId           Int         // 10143 (Monad) or 84532 (Base)
   strategyId        BigInt      // On-chain strategy ID
-  userAddress       String
+  userAddress       String      // EOA owner - for authentication & ownership checks
+  delegatorAddress  String?     // DeleGator smart contract - for execution via ERC-7710 delegation
   name              String
   tokens            String[]    // Array of token addresses
   weights           Int[]       // Array of weights in basis points (sum = 10000)
@@ -56,6 +57,7 @@ model Strategy {
 
   @@unique([userAddress, strategyId, chainId])
   @@index([userAddress])
+  @@index([delegatorAddress])
   @@index([chainId])
   @@index([isActive])
   @@index([isDeployed])

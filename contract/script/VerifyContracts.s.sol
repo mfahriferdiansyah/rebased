@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "forge-std/Script.sol";
 
 /**
  * @title VerifyContracts
  * @notice Verify all deployed contracts on block explorers
- * @dev Reads deployment JSON and verifies implementations + regular contracts
+ * @dev Reads deployment JSON and verifies implementations + DelegationManager
  *
  * Usage:
  *   # Base Sepolia
@@ -50,12 +50,6 @@ contract VerifyContracts is Script {
 
         // Regular contracts (non-upgradeable)
         address delegationManager = vm.parseJsonAddress(json, string.concat(prefix, "delegationManager"));
-        address allowedTargetsEnforcer = vm.parseJsonAddress(json, string.concat(prefix, "allowedTargetsEnforcer"));
-        address allowedMethodsEnforcer = vm.parseJsonAddress(json, string.concat(prefix, "allowedMethodsEnforcer"));
-        address timestampEnforcer = vm.parseJsonAddress(json, string.concat(prefix, "timestampEnforcer"));
-        address limitedCallsEnforcer = vm.parseJsonAddress(json, string.concat(prefix, "limitedCallsEnforcer"));
-        address nativeTokenPaymentEnforcer =
-            vm.parseJsonAddress(json, string.concat(prefix, "nativeTokenPaymentEnforcer"));
 
         console.log("\n=== IMPLEMENTATION CONTRACTS (UUPS) ===");
         console.log("PythOracle Implementation:", pythOracleImpl);
@@ -66,11 +60,7 @@ contract VerifyContracts is Script {
 
         console.log("\n=== REGULAR CONTRACTS ===");
         console.log("DelegationManager:", delegationManager);
-        console.log("AllowedTargetsEnforcer:", allowedTargetsEnforcer);
-        console.log("AllowedMethodsEnforcer:", allowedMethodsEnforcer);
-        console.log("TimestampEnforcer:", timestampEnforcer);
-        console.log("LimitedCallsEnforcer:", limitedCallsEnforcer);
-        console.log("NativeTokenPaymentEnforcer:", nativeTokenPaymentEnforcer);
+        console.log("Note: Using MetaMask's built-in caveat enforcers (no custom enforcers)");
 
         // Generate verification commands
         console.log("\n=== VERIFICATION COMMANDS ===");
@@ -83,12 +73,7 @@ contract VerifyContracts is Script {
                 uniswapHelperImpl,
                 strategyRegistryImpl,
                 rebalanceExecutorImpl,
-                delegationManager,
-                allowedTargetsEnforcer,
-                allowedMethodsEnforcer,
-                timestampEnforcer,
-                limitedCallsEnforcer,
-                nativeTokenPaymentEnforcer
+                delegationManager
             );
         } else if (chainId == 10143) {
             _printMonadVerificationCommands(
@@ -97,12 +82,7 @@ contract VerifyContracts is Script {
                 uniswapHelperImpl,
                 strategyRegistryImpl,
                 rebalanceExecutorImpl,
-                delegationManager,
-                allowedTargetsEnforcer,
-                allowedMethodsEnforcer,
-                timestampEnforcer,
-                limitedCallsEnforcer,
-                nativeTokenPaymentEnforcer
+                delegationManager
             );
         }
 
@@ -116,12 +96,7 @@ contract VerifyContracts is Script {
         address uniswapHelperImpl,
         address strategyRegistryImpl,
         address rebalanceExecutorImpl,
-        address delegationManager,
-        address allowedTargetsEnforcer,
-        address allowedMethodsEnforcer,
-        address timestampEnforcer,
-        address limitedCallsEnforcer,
-        address nativeTokenPaymentEnforcer
+        address delegationManager
     ) internal pure {
         string memory prefix =
             "forge verify-contract --rpc-url https://sepolia-preconf.base.org --verifier blockscout --verifier-url 'https://base-sepolia.blockscout.com/api/'";
@@ -149,46 +124,6 @@ contract VerifyContracts is Script {
                 prefix, " ", vm.toString(delegationManager), " @delegation-framework/DelegationManager.sol:DelegationManager"
             )
         );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(allowedTargetsEnforcer),
-                " src/delegation/enforcers/AllowedTargetsEnforcer.sol:AllowedTargetsEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(allowedMethodsEnforcer),
-                " src/delegation/enforcers/AllowedMethodsEnforcer.sol:AllowedMethodsEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(timestampEnforcer),
-                " src/delegation/enforcers/TimestampEnforcer.sol:TimestampEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(limitedCallsEnforcer),
-                " src/delegation/enforcers/LimitedCallsEnforcer.sol:LimitedCallsEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(nativeTokenPaymentEnforcer),
-                " src/delegation/enforcers/NativeTokenPaymentEnforcer.sol:NativeTokenPaymentEnforcer"
-            )
-        );
     }
 
     function _printMonadVerificationCommands(
@@ -197,12 +132,7 @@ contract VerifyContracts is Script {
         address uniswapHelperImpl,
         address strategyRegistryImpl,
         address rebalanceExecutorImpl,
-        address delegationManager,
-        address allowedTargetsEnforcer,
-        address allowedMethodsEnforcer,
-        address timestampEnforcer,
-        address limitedCallsEnforcer,
-        address nativeTokenPaymentEnforcer
+        address delegationManager
     ) internal pure {
         string memory prefix =
             "forge verify-contract --rpc-url https://testnet-rpc.monad.xyz --verifier sourcify --verifier-url 'https://sourcify-api-monad.blockvision.org'";
@@ -228,46 +158,6 @@ contract VerifyContracts is Script {
         console.log(
             string.concat(
                 prefix, " ", vm.toString(delegationManager), " @delegation-framework/DelegationManager.sol:DelegationManager"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(allowedTargetsEnforcer),
-                " src/delegation/enforcers/AllowedTargetsEnforcer.sol:AllowedTargetsEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(allowedMethodsEnforcer),
-                " src/delegation/enforcers/AllowedMethodsEnforcer.sol:AllowedMethodsEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(timestampEnforcer),
-                " src/delegation/enforcers/TimestampEnforcer.sol:TimestampEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(limitedCallsEnforcer),
-                " src/delegation/enforcers/LimitedCallsEnforcer.sol:LimitedCallsEnforcer"
-            )
-        );
-        console.log(
-            string.concat(
-                prefix,
-                " ",
-                vm.toString(nativeTokenPaymentEnforcer),
-                " src/delegation/enforcers/NativeTokenPaymentEnforcer.sol:NativeTokenPaymentEnforcer"
             )
         );
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -40,6 +40,9 @@ contract PythOracle is
 
     /// @notice Mapping of token address to Pyth price feed ID
     mapping(address => bytes32) public priceFeeds;
+
+    /// @notice Mapping of stablecoin addresses (returns $1 if Pyth feed unavailable)
+    mapping(address => bool) public stablecoins;
 
     /// @notice Constant for 18 decimal scaling
     uint256 private constant DECIMALS_18 = 18;
@@ -147,18 +150,44 @@ contract PythOracle is
     }
 
     /**
+     * @notice Register a token as a stablecoin (returns $1 if Pyth feed unavailable)
+     * @param token The token address
+     * @param isStablecoin True if token is a stablecoin
+     */
+    function setStablecoin(address token, bool isStablecoin) external onlyOwner {
+        require(token != address(0), "Invalid token");
+        stablecoins[token] = isStablecoin;
+    }
+
+    /**
      * @notice Get the latest price for a token (scaled to 18 decimals)
      * @param token The token address
      * @return price The price scaled to 18 decimals
      */
     function getPrice(address token) external view override returns (uint256 price) {
-        PythStructs.Price memory pythPrice = _getPythPrice(token);
+        try this._getPythPriceExternal(token) returns (PythStructs.Price memory pythPrice) {
+            // Validate confidence
+            _validateConfidence(pythPrice, token);
 
-        // Validate confidence
-        _validateConfidence(pythPrice, token);
+            // Scale to 18 decimals
+            price = _scaleToDecimals(pythPrice, DECIMALS_18);
+        } catch {
+            // If Pyth feed fails and token is a stablecoin, return $1
+            if (stablecoins[token]) {
+                return 10 ** DECIMALS_18; // $1 scaled to 18 decimals
+            }
+            // Otherwise, revert with original error
+            revert NoFeedConfigured(token);
+        }
+    }
 
-        // Scale to 18 decimals
-        price = _scaleToDecimals(pythPrice, DECIMALS_18);
+    /**
+     * @notice External wrapper for _getPythPrice (needed for try-catch)
+     * @param token The token address
+     * @return pythPrice The Pyth price struct
+     */
+    function _getPythPriceExternal(address token) external view returns (PythStructs.Price memory) {
+        return _getPythPrice(token);
     }
 
     /**
@@ -174,9 +203,17 @@ contract PythOracle is
     {
         prices = new uint256[](tokens.length);
         for (uint256 i = 0; i < tokens.length; i++) {
-            PythStructs.Price memory pythPrice = _getPythPrice(tokens[i]);
-            _validateConfidence(pythPrice, tokens[i]);
-            prices[i] = _scaleToDecimals(pythPrice, DECIMALS_18);
+            try this._getPythPriceExternal(tokens[i]) returns (PythStructs.Price memory pythPrice) {
+                _validateConfidence(pythPrice, tokens[i]);
+                prices[i] = _scaleToDecimals(pythPrice, DECIMALS_18);
+            } catch {
+                // If Pyth feed fails and token is a stablecoin, return $1
+                if (stablecoins[tokens[i]]) {
+                    prices[i] = 10 ** DECIMALS_18;
+                } else {
+                    revert NoFeedConfigured(tokens[i]);
+                }
+            }
         }
     }
 

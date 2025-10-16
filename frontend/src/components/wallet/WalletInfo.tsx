@@ -148,7 +148,7 @@ export function WalletInfo() {
         <DropdownMenuItem
           onClick={() =>
             window.open(
-              `https://explorer.testnet.monad.xyz/address/${address}`,
+              `https://explorer.testnet.monadexplorer.com/address/${address}`,
               '_blank'
             )
           }

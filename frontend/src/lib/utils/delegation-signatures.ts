@@ -15,8 +15,8 @@ export function getDelegationDomain(
   delegationManagerAddress: `0x${string}`
 ): DelegationDomain {
   return {
-    name: 'Rebased DelegationManager',
-    version: '1',
+    name: 'DelegationManager',
+    version: '1.3.0',
     chainId: BigInt(chainId),
     verifyingContract: delegationManagerAddress,
   };
@@ -73,6 +73,7 @@ export async function signDelegation(
   try {
     // Sign with EIP-712 (eth_signTypedData_v4)
     // This matches the backend verification in DelegationsService.create()
+    // NOTE: MetaMask v1.3.0 does NOT include 'deadline' in EIP-712 message
     const signature = await walletClient.signTypedData({
       account,
       domain,
@@ -80,12 +81,14 @@ export async function signDelegation(
       primaryType: 'Delegation',
       message: {
         delegate: delegationData.delegate,
+        delegator: delegationData.delegator,
         authority: delegationData.authority,
         caveats: delegationData.caveats.map(c => ({
           enforcer: c.enforcer,
           terms: c.terms,
         })),
         salt: delegationData.salt,
+        // deadline is NOT included in MetaMask v1.3.0 EIP-712 signature
       },
     });
 

@@ -11,6 +11,7 @@
 The Rebased Bot Worker is an automated portfolio rebalancing engine that executes rebalances for users who have delegated authority via MetaMask DeleGator smart accounts.
 
 **Features:**
+
 - ✅ Monitors 100+ strategies every 30 seconds
 - ✅ Finds best swap routes across 3 DEX aggregators (1inch, 0x, ParaSwap)
 - ✅ Executes rebalances via MetaMask Delegation Framework v1.3.0
@@ -201,6 +202,7 @@ curl http://localhost:9090/metrics
 ```
 
 **Key Metrics:**
+
 - `rebalance_total` - Total rebalances executed
 - `rebalance_success_total` - Successful rebalances
 - `rebalance_failed_total` - Failed rebalances
@@ -216,6 +218,7 @@ curl http://localhost:9090/metrics
 **NEVER commit private keys to git!**
 
 Best practices:
+
 1. Use environment variables
 2. Use AWS Secrets Manager / HashiCorp Vault in production
 3. Rotate keys regularly
@@ -224,10 +227,12 @@ Best practices:
 ### Bot Wallet Permissions
 
 The bot can ONLY:
+
 - ✅ Execute rebalances for delegated accounts
 - ✅ Get gas reimbursement from user
 
 The bot CANNOT:
+
 - ❌ Withdraw user funds
 - ❌ Transfer user tokens
 - ❌ Change delegation settings
@@ -235,6 +240,7 @@ The bot CANNOT:
 ### API Key Security
 
 Store API keys in:
+
 - `.env` file (development)
 - Environment variables (production)
 - Secrets manager (production recommended)
@@ -248,12 +254,15 @@ Store API keys in:
 **Problem:** Bot monitors strategies but doesn't execute
 
 **Checklist:**
+
 1. Check bot wallet has sufficient gas
+
    ```bash
    cast balance $BOT_ADDRESS --rpc-url https://sepolia.base.org
    ```
 
 2. Check delegation is active
+
    ```bash
    # Call shouldRebalance to verify
    cast call $EXECUTOR "shouldRebalance(address,uint256)" $USER $STRATEGY_ID \
@@ -275,6 +284,7 @@ Store API keys in:
 **Solutions:**
 
 1. Check API keys configured
+
    ```bash
    echo $ONEINCH_API_KEY  # Should not be empty
    ```
@@ -284,6 +294,7 @@ Store API keys in:
    - Enable only needed aggregators
 
 3. Check price impact
+
    ```bash
    # Increase max price impact if needed
    MAX_PRICE_IMPACT=5  # 5% instead of 3%
@@ -340,6 +351,7 @@ MAX_GAS_PRICE=200000000000  # 200 gwei
    - Reduces per-transaction overhead
 
 2. **Gas Price Strategy**
+
    ```bash
    # Use lower multiplier during low-traffic periods
    GAS_PRICE_MULTIPLIER=1.05  # 5% above current
@@ -491,11 +503,13 @@ psql $DATABASE_URL -c "COPY (
 ### Daily Tasks
 
 1. **Check Bot Balance**
+
    ```bash
    ./scripts/check-balance.sh
    ```
 
 2. **Review Failed Rebalances**
+
    ```bash
    npm run bot:check-failures
    ```
@@ -506,6 +520,7 @@ psql $DATABASE_URL -c "COPY (
 ### Weekly Tasks
 
 1. **Update Dependencies**
+
    ```bash
    npm update
    npm audit fix
@@ -521,6 +536,7 @@ psql $DATABASE_URL -c "COPY (
 ### Monthly Tasks
 
 1. **Database Maintenance**
+
    ```bash
    # Vacuum and analyze
    psql $DATABASE_URL -c "VACUUM ANALYZE;"
@@ -563,6 +579,7 @@ See [Troubleshooting](#troubleshooting) section above.
 **Initial Production Release**
 
 ✅ **Implemented:**
+
 - MonitorService with 30s interval
 - StrategyEngine with drift calculation
 - DEX aggregator integration (1inch, 0x, ParaSwap)
@@ -573,6 +590,7 @@ See [Troubleshooting](#troubleshooting) section above.
 - WebSocket notifications
 
 ✅ **Contracts Deployed:**
+
 - Base Sepolia: 0x2cd47f7Cf22594fD1f40AA1b1F3C9a0c1d585BaC
 - Monad Testnet: 0xc5bd44d66d3cCe2D534972A749060472e7Ec78c9
 
@@ -585,15 +603,17 @@ See [Troubleshooting](#troubleshooting) section above.
    - Add to `.env`: `ONEINCH_API_KEY=...`
 
 2. **Fund Bot Wallet**
+
    ```bash
    # Base Sepolia faucet
    https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet
 
    # Monad Testnet faucet
-   https://testnet.monad.xyz/faucet
+   https://testnet.monadexplorer.com/faucet
    ```
 
 3. **Start Bot**
+
    ```bash
    npm run start:bot:dev
    ```
@@ -604,6 +624,7 @@ See [Troubleshooting](#troubleshooting) section above.
    - Watch bot execute rebalance!
 
 5. **Monitor First Execution**
+
    ```bash
    # Watch logs
    npm run start:bot | pino-pretty

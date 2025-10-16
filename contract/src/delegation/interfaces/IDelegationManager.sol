@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 // Re-export MetaMask Delegation Framework types and interfaces
 import { Delegation, Caveat, ModeCode } from "@delegation-framework/utils/Types.sol";

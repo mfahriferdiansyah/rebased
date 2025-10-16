@@ -4,6 +4,11 @@ export const StrategyRegistryABI = [
     "name": "createStrategy",
     "inputs": [
       {
+        "name": "delegator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "strategyId",
         "type": "uint256",
         "internalType": "uint256"
@@ -168,8 +173,20 @@ export const StrategyRegistryABI = [
   }
 ] as const;
 
-// Contract addresses by chainId
+// Contract addresses by chainId - Use environment variables
+// Deployed 2025-10-16 - Latest with MetaMask Integration
 export const STRATEGY_REGISTRY_ADDRESS: Record<number, `0x${string}`> = {
-  10143: '0x83f8381fbA4D5AEcc3D85bE4c15fF55C82aA61a9', // Monad testnet
-  84532: '0xc4F2bA997bA17c778A274708419824039E0E1d54', // Base Sepolia
+  10143: (import.meta.env.VITE_MONAD_STRATEGY_REGISTRY || '0x0000000000000000000000000000000000000000') as `0x${string}`, // Monad testnet
+  84532: (import.meta.env.VITE_BASE_STRATEGY_REGISTRY || '0x0000000000000000000000000000000000000000') as `0x${string}`, // Base Sepolia
 };
+
+/**
+ * Get StrategyRegistry address for a chain, with validation
+ */
+export function getStrategyRegistryAddress(chainId: number): `0x${string}` {
+  const address = STRATEGY_REGISTRY_ADDRESS[chainId];
+  if (!address || address === '0x0000000000000000000000000000000000000000') {
+    throw new Error(`StrategyRegistry address not configured for chain ${chainId}. Please check your .env file.`);
+  }
+  return address;
+}

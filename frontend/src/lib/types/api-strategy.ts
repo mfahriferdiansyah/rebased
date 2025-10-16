@@ -4,11 +4,15 @@
  */
 
 export interface CreateStrategyDto {
+  strategyId?: string; // On-chain strategy ID (from StrategyRegistry contract)
+  deployTxHash?: string; // Deployment transaction hash
   chainId: number;
   tokens: string[]; // Token addresses
   weights: number[]; // Basis points (e.g., 5000 = 50%)
   rebalanceInterval: number; // Seconds
+  delegatorAddress?: string; // DeleGator smart contract address
   strategyLogic?: object; // Complete canvas strategy (blocks, connections, metadata)
+  name?: string; // Strategy name
 }
 
 export interface ApiStrategy {
@@ -16,12 +20,15 @@ export interface ApiStrategy {
   chainId: number;
   strategyId: bigint;
   userAddress: string;
+  delegatorAddress?: string;
   tokens: string[];
   weights: number[];
   rebalanceInterval: bigint;
   strategyLogic?: object; // Complete canvas strategy if provided
   version: string;
   isActive: boolean;
+  isDeployed: boolean;
+  deployTxHash?: string;
   createdAt: string;
   updatedAt: string;
 }

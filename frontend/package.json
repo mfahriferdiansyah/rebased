@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@metamask/delegation-toolkit": "^0.13.0",
     "@privy-io/react-auth": "^3.2.1",
     "@privy-io/wagmi": "^2.0.1",
     "@radix-ui/react-accordion": "^1.2.11",
@@ -47,6 +48,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
+    "ethers": "^6.15.0",
     "fabric": "^6.7.1",
     "framer-motion": "^12.23.22",
     "input-otp": "^1.4.2",
