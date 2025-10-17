@@ -10,6 +10,7 @@ import "./mocks/MockERC20.sol";
 import "./mocks/MockPythOracle.sol";
 import "./mocks/MockUniswapRouter.sol";
 import "./mocks/MockDeleGator.sol";
+import { ModeCode } from "@delegation-framework/utils/Types.sol";
 
 /**
  * @title RebalanceExecutorSecurityTest
@@ -109,7 +110,8 @@ contract RebalanceExecutorSecurityTest is Test {
         tokenB.mint(user, 1000 * 1e6);
         tokenC.mint(user, 1000 ether);
 
-        // Create a test strategy
+        // Create a test strategy using delegationManager (which is actually a MockDeleGator)
+        // NOTE: Despite the confusing name, delegationManager is a MockDeleGator smart account with owner=user
         vm.prank(user);
         address[] memory tokens = new address[](2);
         tokens[0] = address(tokenA);
@@ -120,6 +122,7 @@ contract RebalanceExecutorSecurityTest is Test {
         weights[1] = 4000; // 40%
 
         registry.createStrategy(
+            address(delegationManager),  // DeleGator smart account address
             0,  // strategyId
             tokens,
             weights,
@@ -149,20 +152,28 @@ contract RebalanceExecutorSecurityTest is Test {
         uint256[] memory minOutputAmounts = new uint256[](1);
         minOutputAmounts[0] = 1 ether;
 
+        uint256[] memory nativeValues = new uint256[](1);
+        nativeValues[0] = 0;
+
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](1);
+        tokensIn[0] = address(tokenA);
 
         // Should revert with UnapprovedDEX error
         vm.expectRevert(abi.encodeWithSelector(RebalanceExecutor.UnapprovedDEX.selector, maliciousDEX));
         executor.rebalance(
-            user,
+            address(delegationManager),  // DeleGator smart account
             0,
+            tokensIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
+            nativeValues,
             permissionContexts,
             modes
         );
@@ -246,17 +257,22 @@ contract RebalanceExecutorSecurityTest is Test {
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](1);
+        tokensIn[0] = address(tokenA);
 
         // Should revert with InsufficientSlippageProtection
         vm.expectRevert(RebalanceExecutor.InsufficientSlippageProtection.selector);
         executor.rebalance(
-            user,
+            address(delegationManager),  // DeleGator smart account
             0,
+            tokensIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
+            new uint256[](1),
             permissionContexts,
             modes
         );
@@ -282,17 +298,23 @@ contract RebalanceExecutorSecurityTest is Test {
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](2);
+        tokensIn[0] = address(tokenA);
+        tokensIn[1] = address(tokenA);
 
         // Should revert with length mismatch error
         vm.expectRevert("Min output amounts length mismatch");
         executor.rebalance(
-            user,
+            address(delegationManager),  // DeleGator smart account
             0,
+            tokensIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
+            new uint256[](2),
             permissionContexts,
             modes
         );
@@ -322,17 +344,24 @@ contract RebalanceExecutorSecurityTest is Test {
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](3);
+        tokensIn[0] = address(tokenA);
+        tokensIn[1] = address(tokenA);
+        tokensIn[2] = address(tokenA);
 
         // Should revert with InsufficientSlippageProtection
         vm.expectRevert(RebalanceExecutor.InsufficientSlippageProtection.selector);
         executor.rebalance(
-            user,
+            address(delegationManager),  // DeleGator smart account
             0,
+            tokensIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
+            new uint256[](3),
             permissionContexts,
             modes
         );
@@ -366,17 +395,22 @@ contract RebalanceExecutorSecurityTest is Test {
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](1);
+        tokensIn[0] = address(tokenA);
 
         // Should revert with ContractPaused
         vm.expectRevert(RebalanceExecutor.ContractPaused.selector);
         executor.rebalance(
-            user,
+            address(delegationManager),  // DeleGator smart account
             0,
+            tokensIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
+            new uint256[](1),
             permissionContexts,
             modes
         );
@@ -442,17 +476,22 @@ contract RebalanceExecutorSecurityTest is Test {
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](1);
+        tokensIn[0] = address(tokenA);
 
         // This should pass all security checks (but may fail on delegation or strategy checks)
         // The important thing is it doesn't revert with our new security errors
         try executor.rebalance(
-            user,
+            address(delegationManager),  // DeleGator smart account
             0,
+            tokensIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
+            new uint256[](1),
             permissionContexts,
             modes
         ) {
@@ -482,26 +521,29 @@ contract RebalanceExecutorSecurityTest is Test {
         bytes[] memory permissionContexts = new bytes[](1);
         permissionContexts[0] = hex"";
 
-        bytes32[] memory modes = new bytes32[](1);
-        modes[0] = bytes32(0);
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = ModeCode.wrap(bytes32(0));
+
+        address[] memory tokensIn = new address[](1);
+        tokensIn[0] = address(tokenA);
 
         // 1. First fails on DEX whitelist
         vm.expectRevert(abi.encodeWithSelector(RebalanceExecutor.UnapprovedDEX.selector, maliciousDEX));
-        executor.rebalance(user, 0, swapTargets, swapCallDatas, minOutputAmounts, permissionContexts, modes);
+        executor.rebalance(address(delegationManager), 0, tokensIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
 
         // 2. Approve DEX, now fails on slippage (set to 0)
         executor.setDEXApproval(maliciousDEX, true);
         minOutputAmounts[0] = 0;
 
         vm.expectRevert(RebalanceExecutor.InsufficientSlippageProtection.selector);
-        executor.rebalance(user, 0, swapTargets, swapCallDatas, minOutputAmounts, permissionContexts, modes);
+        executor.rebalance(address(delegationManager), 0, tokensIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
 
         // 3. Fix slippage, now fails on pause
         minOutputAmounts[0] = 1 ether;
         executor.pause();
 
         vm.expectRevert(RebalanceExecutor.ContractPaused.selector);
-        executor.rebalance(user, 0, swapTargets, swapCallDatas, minOutputAmounts, permissionContexts, modes);
+        executor.rebalance(address(delegationManager), 0, tokensIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
 
         // 4. Unpause - should pass security checks (may fail on other validations)
         executor.unpause();
@@ -518,7 +560,7 @@ contract RebalanceExecutorSecurityTest is Test {
      * @notice Test shouldRebalance still works after security fixes
      */
     function testShouldRebalanceViewFunction() public view {
-        (bool shouldRebalance, uint256 drift) = executor.shouldRebalance(user, 0);
+        (bool shouldRebalance, uint256 drift) = executor.shouldRebalance(address(delegationManager), 0);
         // Just verify it doesn't revert
         // Actual values depend on strategy state
     }
@@ -527,7 +569,7 @@ contract RebalanceExecutorSecurityTest is Test {
      * @notice Test getPortfolioValue still works after security fixes
      */
     function testGetPortfolioValueViewFunction() public view {
-        uint256 value = executor.getPortfolioValue(user, 0);
+        uint256 value = executor.getPortfolioValue(address(delegationManager), 0);
         // Just verify it doesn't revert
         // Actual value depends on user's balances
     }

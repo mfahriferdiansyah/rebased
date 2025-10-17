@@ -10,6 +10,10 @@ import { BlockType } from '@/lib/types/blocks';
 import type { AssetBlock, ActionBlock } from '@/lib/types/blocks';
 import { useToast } from './use-toast';
 import { useAuth } from './useAuth';
+import { writeContract } from '@wagmi/core';
+import { wagmiConfig } from '@/lib/wagmi';
+import { StrategyRegistryABI, getStrategyRegistryAddress } from '@/lib/abis/StrategyRegistry';
+import { waitForTransactionReceiptWithRetry } from '@/lib/utils/transaction-receipt';
 
 /**
  * Strategy Hook - Production Quality
@@ -30,6 +34,7 @@ export function useStrategy(chainId?: number) {
   const [strategies, setStrategies] = useState<ApiStrategy[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deploying, setDeploying] = useState(false);
 
   // Track if we've already fetched to avoid duplicate requests
   const fetchedRef = useRef(false);
@@ -272,6 +277,164 @@ export function useStrategy(chainId?: number) {
   );
 
   /**
+   * Deploy strategy to on-chain StrategyRegistry
+   * This creates the strategy on the blockchain with minimal data
+   */
+  const deployStrategyOnChain = useCallback(
+    async (savedStrategy: ApiStrategy): Promise<{ strategyId: bigint; hash: `0x${string}` } | null> => {
+      // Validation
+      if (!isPrivyAuthenticated || !userAddress) {
+        toast({
+          title: 'Not authenticated',
+          description: 'Please log in to deploy strategy',
+          variant: 'destructive',
+        });
+        return null;
+      }
+
+      if (!savedStrategy.strategyLogic) {
+        toast({
+          title: 'Invalid Strategy',
+          description: 'Strategy must have logic data',
+          variant: 'destructive',
+        });
+        return null;
+      }
+
+      if (!savedStrategy.delegatorAddress) {
+        toast({
+          title: 'Invalid Strategy',
+          description: 'Strategy must have a DeleGator address',
+          variant: 'destructive',
+        });
+        return null;
+      }
+
+      try {
+        setDeploying(true);
+
+        toast({
+          title: 'Deploying strategy...',
+          description: 'Preparing on-chain deployment',
+        });
+
+        const canvasStrategy = savedStrategy.strategyLogic as Strategy;
+
+        // Extract asset blocks
+        const assetBlocks = canvasStrategy.blocks.filter(
+          (b): b is AssetBlock => b.type === BlockType.ASSET
+        );
+
+        if (assetBlocks.length === 0) {
+          throw new Error('Strategy must have at least one asset');
+        }
+
+        // Extract data
+        const tokens = assetBlocks.map(b => b.data.address as `0x${string}`);
+        const weights = assetBlocks.map(b => Math.round(b.data.initialWeight * 100)); // % to basis points
+
+        // Get rebalance interval
+        let rebalanceInterval = 3600; // Default 1 hour in seconds
+        const actionBlocks = canvasStrategy.blocks.filter(
+          (b): b is ActionBlock => b.type === BlockType.ACTION
+        );
+        for (const action of actionBlocks) {
+          if (action.data.actionType === 'rebalance' && action.data.rebalanceTrigger?.interval) {
+            rebalanceInterval = action.data.rebalanceTrigger.interval * 60; // minutes to seconds
+            break;
+          }
+        }
+
+        // Generate unique strategy ID (timestamp-based)
+        const strategyId = BigInt(Date.now());
+
+        // Get contract address for this chain (with validation)
+        const registryAddress = getStrategyRegistryAddress(savedStrategy.chainId);
+
+        toast({
+          title: 'Confirm transaction...',
+          description: 'Please approve the transaction in your wallet',
+        });
+
+        // Call contract - NEW SIGNATURE WITH DELEGATOR
+        const hash = await writeContract(wagmiConfig, {
+          address: registryAddress,
+          abi: StrategyRegistryABI,
+          functionName: 'createStrategy',
+          args: [
+            savedStrategy.delegatorAddress as `0x${string}`, // First parameter: DeleGator smart account address
+            strategyId,
+            tokens,
+            weights,
+            BigInt(rebalanceInterval),
+            canvasStrategy.name
+          ],
+        });
+
+        toast({
+          title: 'Transaction submitted',
+          description: `Waiting for confirmation... Tx: ${hash.slice(0, 10)}...`,
+        });
+
+        // Wait for confirmation with retry logic (3 attempts, 3s delay)
+        const receipt = await waitForTransactionReceiptWithRetry(wagmiConfig, hash, 3, 3000);
+
+        if (receipt.status !== 'success') {
+          throw new Error('Transaction failed');
+        }
+
+        // Update backend with on-chain strategyId
+        const token = await getBackendToken();
+        if (token) {
+          try {
+            await strategiesApi.updateStrategy(
+              savedStrategy.id,
+              {
+                strategyId: strategyId.toString(),
+                isDeployed: true,
+                deployTxHash: hash,
+              },
+              token
+            );
+
+            // Update local state
+            setStrategies(prev =>
+              prev.map(s =>
+                s.id === savedStrategy.id
+                  ? { ...s, strategyId: strategyId.toString(), isDeployed: true, deployTxHash: hash }
+                  : s
+              )
+            );
+          } catch (updateError) {
+            console.error('Failed to update backend with deployment info:', updateError);
+            // Continue anyway - on-chain deployment succeeded
+          }
+        }
+
+        toast({
+          title: 'Strategy Deployed!',
+          description: `On-chain ID: ${strategyId.toString()}\nTx: ${hash}`,
+        });
+
+        console.log('✅ Strategy deployed on-chain:', { strategyId, hash });
+
+        return { strategyId, hash };
+      } catch (error: any) {
+        console.error('Failed to deploy strategy:', error);
+        toast({
+          title: 'Deployment Failed',
+          description: error.message || 'Failed to deploy strategy on-chain',
+          variant: 'destructive',
+        });
+        return null;
+      } finally {
+        setDeploying(false);
+      }
+    },
+    [isPrivyAuthenticated, userAddress, getBackendToken, toast]
+  );
+
+  /**
    * Delete/deactivate a strategy
    */
   const deleteStrategy = useCallback(
@@ -345,12 +508,14 @@ export function useStrategy(chainId?: number) {
     strategies,
     loading,
     saving,
+    deploying,
     isConnected: isPrivyAuthenticated && !!userAddress,
     isReady: canFetchData,
     userAddress,
 
     // Actions
     saveStrategy,
+    deployStrategyOnChain,
     deleteStrategy,
     refreshStrategies: fetchStrategies,
     convertCanvasToDto, // Expose for validation

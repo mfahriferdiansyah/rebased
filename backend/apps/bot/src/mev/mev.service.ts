@@ -97,6 +97,8 @@ export class MevService {
     await this.prisma.intent.create({
       data: {
         id: intentId,
+        userAddress: '0x0000000000000000000000000000000000000000', // TODO: Pass userAddress from caller
+        strategyId: '0', // TODO: Pass strategyId from caller
         chainId: chain === 'monad' ? 10143 : 84532,
         intentData: {
           target: tx.to,
@@ -105,6 +107,7 @@ export class MevService {
           deadline: Date.now() + 5 * 60 * 1000, // 5 minute deadline
         },
         status: 'PENDING',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minute expiry
       },
     });
 

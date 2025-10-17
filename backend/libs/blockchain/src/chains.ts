@@ -21,7 +21,7 @@ export const monadTestnet = defineChain({
     },
   },
   blockExplorers: {
-    default: { name: 'Monad Explorer', url: 'https://explorer.testnet.monad.xyz' },
+    default: { name: 'Monad Explorer', url: 'https://testnet.monadexplorer.com' },
   },
   testnet: true,
 });

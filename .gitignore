@@ -167,3 +167,6 @@ docker-compose.override.yml
 .nuxt/
 .vercel
 .netlify
+
+docs/
+docs/**

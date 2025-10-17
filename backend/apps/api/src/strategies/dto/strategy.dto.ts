@@ -15,6 +15,23 @@ import {
 
 export class CreateStrategyDto {
   @ApiProperty({
+    description: 'On-chain strategy ID (from StrategyRegistry contract)',
+    example: 1710000000000,
+    required: false,
+  })
+  @IsOptional()
+  strategyId?: bigint | string | number;
+
+  @ApiProperty({
+    description: 'Deployment transaction hash (from on-chain deployment)',
+    example: '0xa847793343553d5ecd5c9678892e39045986fb02e20dc2ae425f5b93cd344d70',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  deployTxHash?: string;
+
+  @ApiProperty({
     description: 'Chain ID (10143 for Monad, 84532 for Base)',
     example: 10143,
   })
@@ -53,12 +70,21 @@ export class CreateStrategyDto {
   weights: number[];
 
   @ApiProperty({
-    description: 'Rebalance interval in seconds',
+    description: 'Rebalance interval in seconds (accepts small values for testing)',
     example: 86400,
   })
   @IsInt()
-  @Min(3600) // Min 1 hour
+  @Min(1) // Min 1 second (testing mode)
   rebalanceInterval: number;
+
+  @ApiProperty({
+    description: 'DeleGator smart contract address for execution',
+    example: '0x2E16Fe00258dbf519C59C7C30FA80F22fcFe8421',
+    required: false,
+  })
+  @IsEthereumAddress()
+  @IsOptional()
+  delegatorAddress?: string;
 
   @ApiProperty({
     description: 'Complete canvas strategy logic (blocks, connections, metadata) - optional',
@@ -79,6 +105,15 @@ export class CreateStrategyDto {
 
 export class UpdateStrategyDto {
   @ApiProperty({
+    description: 'DeleGator smart contract address for execution',
+    example: '0x2E16Fe00258dbf519C59C7C30FA80F22fcFe8421',
+    required: false,
+  })
+  @IsEthereumAddress()
+  @IsOptional()
+  delegatorAddress?: string;
+
+  @ApiProperty({
     description: 'Array of weights (basis points, must sum to 10000)',
     example: [6000, 4000],
     required: false,
@@ -93,12 +128,12 @@ export class UpdateStrategyDto {
   weights?: number[];
 
   @ApiProperty({
-    description: 'Rebalance interval in seconds',
+    description: 'Rebalance interval in seconds (accepts small values for testing)',
     example: 86400,
     required: false,
   })
   @IsInt()
-  @Min(3600)
+  @Min(1) // Min 1 second (testing mode)
   @IsOptional()
   rebalanceInterval?: number;
 
@@ -135,6 +170,9 @@ export class StrategyResponseDto {
   rebalanceInterval: string;
 
   @ApiProperty({ required: false })
+  delegatorAddress?: string;
+
+  @ApiProperty({ required: false })
   strategyLogic?: object;
 
   @ApiProperty()
@@ -142,6 +180,12 @@ export class StrategyResponseDto {
 
   @ApiProperty()
   isActive: boolean;
+
+  @ApiProperty()
+  isDeployed: boolean;
+
+  @ApiProperty({ required: false })
+  deployTxHash?: string;
 
   @ApiProperty()
   createdAt: Date;

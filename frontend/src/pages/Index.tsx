@@ -15,6 +15,7 @@ import { AssetBlockEditModal } from "@/components/blocks/AssetBlockEditModal";
 import { ConditionBlockEditModal } from "@/components/blocks/ConditionBlockEditModal";
 import { ActionBlockEditModal } from "@/components/blocks/ActionBlockEditModal";
 import { DelegationManagerModal } from "@/components/delegation/DelegationManagerModal";
+import { StrategySetupWizard } from "@/components/wizard/StrategySetupWizard";
 import { Target } from "lucide-react";
 
 const Index = () => {
@@ -41,8 +42,9 @@ const Index = () => {
     canRedo,
   } = useCanvas();
 
-  // Delegation hook
-  const { activeDelegation } = useDelegation();
+  // Delegation hook - get chainId from strategy if available
+  const strategyChainId = strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId;
+  const { activeDelegation, refreshDelegations } = useDelegation(strategyChainId);
 
   // Strategy hook for saving
   const { saveStrategy, saving } = useStrategy();
@@ -62,6 +64,9 @@ const Index = () => {
 
   // Delegation manager modal state
   const [isDelegationModalOpen, setIsDelegationModalOpen] = useState(false);
+
+  // Strategy setup wizard modal state
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
 
   // Handle block edit
   const handleBlockEdit = (block: Block) => {
@@ -333,7 +338,48 @@ const Index = () => {
               onBlockDelete={handleBlockDelete}
               onBlockEdit={handleBlockEdit}
               activeDelegation={activeDelegation}
-              onDelegationClick={() => setIsDelegationModalOpen(true)}
+              onDelegationClick={async () => {
+                // Show wizard for first-time setup, or delegation modal for managing existing
+                if (!activeDelegation) {
+                  // Validate strategy before opening wizard
+                  if (!strategy) {
+                    toast({
+                      title: 'No Strategy',
+                      description: 'Please create a strategy first',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+
+                  const assetBlocks = strategy.blocks.filter(b => b.type === BlockType.ASSET);
+                  if (assetBlocks.length === 0) {
+                    toast({
+                      title: 'Invalid Strategy',
+                      description: 'Strategy must have at least one asset block',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+
+                  const chainId = (assetBlocks[0] as AssetBlock).data.chainId;
+                  const allSameChain = assetBlocks.every(
+                    b => (b as AssetBlock).data.chainId === chainId
+                  );
+                  if (!allSameChain) {
+                    toast({
+                      title: 'Invalid Strategy',
+                      description: 'All assets must be on the same chain',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+
+                  // Open wizard directly (no save yet - deploy on-chain first)
+                  setIsSetupWizardOpen(true);
+                } else {
+                  setIsDelegationModalOpen(true);
+                }
+              }}
             />
 
             {/* Floating Toolbar */}
@@ -450,6 +496,23 @@ const Index = () => {
         <DelegationManagerModal
           open={isDelegationModalOpen}
           onOpenChange={setIsDelegationModalOpen}
+        />
+
+        {/* Strategy Setup Wizard */}
+        <StrategySetupWizard
+          open={isSetupWizardOpen}
+          onOpenChange={setIsSetupWizardOpen}
+          strategy={strategy!}
+          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || 10143}
+          onComplete={async () => {
+            // Refresh delegations to show new delegation on START block
+            await refreshDelegations();
+            // Show success toast
+            toast({
+              title: 'Setup Complete!',
+              description: 'Your strategy is now active and delegated to the bot.',
+            });
+          }}
         />
       </div>
     </div>

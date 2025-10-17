@@ -82,11 +82,17 @@ export function useDelegation(chainId?: number) {
           userAddress // Pass userAddress
         );
 
+        console.log(`[useDelegation] Fetched ${data.length} delegations:`, data);
+
         setDelegations(data);
 
-        // Auto-select first delegation if none selected
-        if (data.length > 0 && !activeDelegation) {
+        // Always set activeDelegation to the first delegation (most recent)
+        if (data.length > 0) {
           setActiveDelegation(data[0]);
+          console.log('[useDelegation] Set activeDelegation:', data[0].id);
+        } else {
+          setActiveDelegation(null);
+          console.log('[useDelegation] No delegations found');
         }
 
         // Success - break retry loop
@@ -153,12 +159,14 @@ export function useDelegation(chainId?: number) {
    * @param strategyId - Strategy to delegate (optional - can be linked later)
    * @param delegateAddress - Bot executor address (optional, uses default)
    * @param selectedChainId - Chain to create delegation on
+   * @param delegatorAddress - DeleGator smart account address (optional, uses userAddress)
    */
   const createDelegation = useCallback(
     async (
       strategyId: string | undefined,
       delegateAddress: `0x${string}` | null,
-      selectedChainId: number
+      selectedChainId: number,
+      delegatorAddress?: `0x${string}`
     ): Promise<Delegation | null> => {
       // Validation: Must be authenticated with Privy
       if (!isPrivyAuthenticated) {
@@ -187,12 +195,14 @@ export function useDelegation(chainId?: number) {
         // Use default bot executor if not provided
         const finalDelegateAddress = delegateAddress || getBotExecutorAddress(selectedChainId);
 
-        // 1. Generate delegation data
+        // 1. Generate delegation data (MetaMask v1.3.0 - no deadline field)
         const delegationData: DelegationData = {
           delegate: finalDelegateAddress,
+          delegator: delegatorAddress || userAddress, // DeleGator smart account or EOA
           authority: createRootAuthority(), // Root delegation (no parent)
           caveats: createEmptyCaveats(), // No restrictions for MVP
           salt: generateDelegationSalt(), // Random 256-bit salt
+          // NOTE: deadline removed - not part of MetaMask v1.3.0
         };
 
         // 2. Switch wallet to target chain
@@ -223,6 +233,14 @@ export function useDelegation(chainId?: number) {
           transport: custom(provider),
         });
 
+        // DEBUG: Log wallet details before signing
+        console.log('🔍 DEBUG - About to sign delegation:');
+        console.log('  - Privy wallet address:', privyWallet.address);
+        console.log('  - userAddress:', userAddress);
+        console.log('  - wallets[0].address:', wallets[0]?.address);
+        console.log('  - Chain:', selectedChainId);
+        console.log('  - DelegationData.delegator:', delegationData.delegator);
+
         // 4. Sign delegation with EIP-712
         toast({
           title: 'Signature required',
@@ -235,6 +253,9 @@ export function useDelegation(chainId?: number) {
           delegationData,
           selectedChainId
         );
+
+        // DEBUG: Log signature
+        console.log('✅ Signature created:', signature);
 
         // 5. Submit to backend
         toast({
@@ -249,7 +270,7 @@ export function useDelegation(chainId?: number) {
 
         const createDto: CreateDelegationDto = {
           chainId: selectedChainId,
-          strategyId,
+          strategyId: strategyId || undefined, // Only include if valid, otherwise undefined
           delegateAddress: finalDelegateAddress,
           delegationData,
           signature,

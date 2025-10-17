@@ -15,8 +15,8 @@ export function getDelegationDomain(
   delegationManagerAddress: `0x${string}`
 ): DelegationDomain {
   return {
-    name: 'Rebased DelegationManager',
-    version: '1',
+    name: 'DelegationManager',
+    version: '1', // MUST match DelegationManager.sol DOMAIN_VERSION (not VERSION)
     chainId: BigInt(chainId),
     verifyingContract: delegationManagerAddress,
   };
@@ -73,6 +73,7 @@ export async function signDelegation(
   try {
     // Sign with EIP-712 (eth_signTypedData_v4)
     // This matches the backend verification in DelegationsService.create()
+    // NOTE: MetaMask v1.3.0 does NOT include 'deadline' in EIP-712 message
     const signature = await walletClient.signTypedData({
       account,
       domain,
@@ -80,12 +81,14 @@ export async function signDelegation(
       primaryType: 'Delegation',
       message: {
         delegate: delegationData.delegate,
+        delegator: delegationData.delegator,
         authority: delegationData.authority,
         caveats: delegationData.caveats.map(c => ({
           enforcer: c.enforcer,
           terms: c.terms,
         })),
         salt: delegationData.salt,
+        // deadline is NOT included in MetaMask v1.3.0 EIP-712 signature
       },
     });
 
@@ -113,9 +116,10 @@ export function createEmptyCaveats(): Caveat[] {
 /**
  * Create root authority (no parent delegation)
  * For MVP, all delegations are root delegations
+ * MUST match DelegationManager.sol ROOT_AUTHORITY constant
  */
 export function createRootAuthority(): `0x${string}` {
-  return '0x0000000000000000000000000000000000000000000000000000000000000000';
+  return '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 }
 
 /**
@@ -182,19 +186,17 @@ export function createValueLimitCaveat(
 }
 
 /**
- * Get bot executor address for chain
- * This is the address that will execute rebalances
+ * Get delegate address for creating "open delegations"
+ * Returns MetaMask's ANY_DELEGATE constant (createOpenDelegation pattern)
+ *
+ * This allows RebalanceExecutor contract to call DelegationManager.redeemDelegations()
+ * on behalf of the bot, while keeping all validation logic on-chain in RebalanceExecutor.
+ *
+ * @see https://docs.metamask.io/delegation-toolkit/reference/delegation/#createopendelegation
+ * @see DelegationManager.sol:40-41 - ANY_DELEGATE = address(0xa11)
  */
 export function getBotExecutorAddress(chainId: number): `0x${string}` {
-  const addresses: Record<number, `0x${string}`> = {
-    10143: (import.meta.env.VITE_MONAD_BOT_EXECUTOR || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-    84532: (import.meta.env.VITE_BASE_BOT_EXECUTOR || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-  };
-
-  const address = addresses[chainId];
-  if (!address || address === '0x0000000000000000000000000000000000000000') {
-    throw new Error(`No bot executor configured for chain ${chainId}`);
-  }
-
-  return address;
+  // MetaMask's ANY_DELEGATE constant - allows any caller to redeem delegation
+  // This is the standard pattern for "open delegations" in MetaMask Delegation Framework
+  return '0x0000000000000000000000000000000000000a11';
 }

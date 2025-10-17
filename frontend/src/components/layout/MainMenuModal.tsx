@@ -1,14 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
 } from "@/components/ui/dialog";
-import { Trophy, History, Settings, FileText, LogOut, Layers } from "lucide-react";
+import { Trophy, History, Settings, FileText, LogOut, Layers, Loader2 } from "lucide-react";
 import { Strategy } from "@/lib/types/strategy";
 import { PlanCard } from "./PlanCard";
-import { mockStrategies, StrategyWithMetrics } from "@/lib/utils/mockStrategies";
-import { getSavedStrategies } from "@/lib/utils/strategyStorage";
 import { Paginator } from "@/components/ui/paginator";
+import { useStrategy } from "@/hooks/useStrategy";
+import { useDelegation } from "@/hooks/useDelegation";
+import { ApiStrategy } from "@/lib/types/api-strategy";
+import { BlockType, AssetBlock } from "@/lib/types/blocks";
+import { useToast } from "@/hooks/use-toast";
 
 interface MainMenuModalProps {
   open: boolean;
@@ -25,109 +28,159 @@ type MenuItem = {
 };
 
 export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuModalProps) {
-  const [selectedItem, setSelectedItem] = useState<string>("plans");
-  const [plans, setPlans] = useState<StrategyWithMetrics[]>([...mockStrategies, ...getSavedStrategies()]);
+  const [selectedItem, setSelectedItem] = useState<string>("strategies");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const { toast } = useToast();
 
-  // Calculate paginated plans
+  // Fetch real strategies from backend
+  const { strategies, loading, deleteStrategy, refreshStrategies } = useStrategy();
+  const { delegations } = useDelegation();
+
+  // Refresh strategies when modal opens
+  useEffect(() => {
+    if (open) {
+      refreshStrategies();
+    }
+  }, [open, refreshStrategies]);
+
+  // Calculate paginated strategies
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedPlans = plans.slice(startIndex, endIndex);
+  const paginatedStrategies = strategies.slice(startIndex, endIndex);
 
-  const handleStrategyDeploy = (strategy: StrategyWithMetrics) => {
-    onStrategyLoad?.(strategy);
-    onOpenChange(false);
+  // Convert ApiStrategy to canvas Strategy and load
+  const handleStrategyDeploy = (apiStrategy: ApiStrategy) => {
+    if (apiStrategy.strategyLogic) {
+      const canvasStrategy = apiStrategy.strategyLogic as Strategy;
+      onStrategyLoad?.(canvasStrategy);
+      onOpenChange(false);
+      toast({
+        title: 'Strategy Loaded',
+        description: `${canvasStrategy.name || 'Strategy'} loaded into canvas`,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: 'Strategy has no canvas data',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleStart = (id: string) => {
-    setPlans((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, status: "running" as const } : p))
-    );
-    console.log("Start strategy:", id);
-    // TODO: API call to start strategy
+  const handleStart = async (id: string) => {
+    // Strategy is activated by creating delegation in wizard
+    toast({
+      title: 'Not Implemented',
+      description: 'Use the START block in canvas to activate strategy',
+    });
   };
 
-  const handleStop = (id: string) => {
-    setPlans((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, status: "stopped" as const } : p))
-    );
-    console.log("Stop strategy:", id);
-    // TODO: API call to stop strategy
+  const handleStop = async (id: string) => {
+    // Strategy is stopped by revoking delegation
+    toast({
+      title: 'Not Implemented',
+      description: 'Use the Delegation Manager to revoke delegation',
+    });
   };
 
-  const handleDelete = (id: string) => {
-    setPlans((prev) => {
-      const updated = prev.filter((p) => p.id !== id);
+  const handleDelete = async (id: string) => {
+    const success = await deleteStrategy(id);
+    if (success) {
       // Reset to first page if current page becomes empty
-      const newTotalPages = Math.ceil(updated.length / itemsPerPage);
+      const newTotalPages = Math.ceil((strategies.length - 1) / itemsPerPage);
       if (currentPage > newTotalPages && newTotalPages > 0) {
         setCurrentPage(newTotalPages);
       }
-      return updated;
-    });
-    console.log("Delete strategy:", id);
-    // TODO: API call to delete strategy
+    }
   };
 
   const menuItems: MenuItem[] = [
     {
-      id: "plans",
+      id: "strategies",
       icon: Layers,
-      label: "Plans",
+      label: "Strategies",
       description: "Your saved strategies",
       content: (
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="flex-shrink-0 flex items-end justify-between gap-4 mb-4">
             <div>
-              <h3 className="text-lg font-bold text-gray-900">Your Plans</h3>
+              <h3 className="text-lg font-bold text-gray-900">Your Strategies</h3>
               <p className="text-sm text-gray-600 mt-1">
-                Deploy strategies to the canvas and start building
+                {strategies.length} {strategies.length === 1 ? 'strategy' : 'strategies'} saved
               </p>
             </div>
             <button
               onClick={() => {
-                console.log("Create new plan");
-                // TODO: Open canvas with empty strategy
+                onOpenChange(false);
               }}
               className="px-3 py-1.5 rounded text-xs font-medium text-gray-700 border border-gray-300 hover:bg-gray-100 active:scale-95 transition-all duration-200 flex items-center gap-1.5 whitespace-nowrap"
             >
               <span className="text-sm">+</span>
-              Create New Plan
+              Create New Strategy
             </button>
           </div>
 
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {plans.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-12">
+                <Loader2 className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
+                <p className="text-sm text-gray-500">Loading strategies...</p>
+              </div>
+            ) : strategies.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
                   <Layers className="w-6 h-6 text-gray-400" />
                 </div>
-                <p className="text-sm text-gray-500">No saved plans yet</p>
+                <p className="text-sm text-gray-500 mb-2">No saved strategies yet</p>
+                <p className="text-xs text-gray-400">Create your first strategy on the canvas</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {paginatedPlans.map((plan) => (
-                  <PlanCard
-                    key={plan.id}
-                    strategy={plan}
-                    onDeploy={handleStrategyDeploy}
-                    onStart={handleStart}
-                    onStop={handleStop}
-                    onDelete={handleDelete}
-                  />
-                ))}
+                {paginatedStrategies.map((strategy) => {
+                  // Find delegation for this strategy
+                  const delegation = delegations.find(d => d.strategyId === strategy.id && d.isActive);
+
+                  // Convert to StrategyWithMetrics format for PlanCard
+                  const strategyWithMetrics = {
+                    ...strategy.strategyLogic as Strategy,
+                    id: strategy.id,
+                    name: strategy.strategyLogic?.name || strategy.name || 'Untitled Strategy',
+                    description: `${strategy.tokens.length} assets • ${strategy.isActive ? 'Active' : 'Inactive'}`,
+                    status: delegation ? 'running' : strategy.isActive ? 'draft' : 'stopped',
+                    metrics: {
+                      totalValuation: 0, // TODO: Get from portfolio analyzer
+                      pnl: 0,
+                      trades: 0,
+                    },
+                    metadata: {
+                      createdAt: new Date(strategy.createdAt).getTime(),
+                      updatedAt: new Date(strategy.updatedAt).getTime(),
+                    },
+                  };
+
+                  return (
+                    <PlanCard
+                      key={strategy.id}
+                      strategy={strategyWithMetrics as any}
+                      onDeploy={() => handleStrategyDeploy(strategy)}
+                      onStart={handleStart}
+                      onStop={handleStop}
+                      onDelete={handleDelete}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
 
           {/* Sticky Pagination Footer */}
-          {plans.length > 0 && (
+          {strategies.length > 0 && (
             <div className="flex-shrink-0 bg-white py-3 px-6 shadow-[0_-1px_4px_rgba(0,0,0,0.06)]">
               <Paginator
-                totalItems={plans.length}
+                totalItems={strategies.length}
                 itemsPerPage={itemsPerPage}
                 currentPage={currentPage}
                 onPageChange={setCurrentPage}

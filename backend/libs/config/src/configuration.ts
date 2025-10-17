@@ -51,6 +51,8 @@ export default () => ({
     monitoringInterval: parseInt(process.env.MONITORING_INTERVAL, 10) || 30000,
     maxSlippageBps: parseInt(process.env.MAX_SLIPPAGE_BPS, 10) || 100,
     gasReimbursement: process.env.GAS_REIMBURSEMENT || '0.01',
+    maxGasPrice: BigInt(process.env.MAX_GAS_PRICE || '500000000000'), // 500 gwei default for testnet
+    gasPriceMultiplier: parseFloat(process.env.GAS_PRICE_MULTIPLIER || '1.1'),
   },
 
   dex: {

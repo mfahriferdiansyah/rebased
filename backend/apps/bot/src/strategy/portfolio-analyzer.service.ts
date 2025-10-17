@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ChainService } from '@app/blockchain';
+import { ChainService, PythOracleService } from '@app/blockchain';
 import { ConfigService } from '@nestjs/config';
 import { CanvasStrategy, PortfolioState, AssetBlock } from './types/strategy-logic.types';
 import { StrategyParserService } from './strategy-parser.service';
@@ -12,6 +12,7 @@ export class PortfolioAnalyzerService {
     private readonly chain: ChainService,
     private readonly config: ConfigService,
     private readonly parser: StrategyParserService,
+    private readonly pythOracle: PythOracleService,
   ) {}
 
   /**
@@ -117,7 +118,7 @@ export class PortfolioAnalyzerService {
     chainName: string,
   ): Promise<bigint> {
     try {
-      const client = this.chain.getPublicClient(chainName);
+      const client = this.chain.getPublicClient(chainName as any);
 
       // Handle native token (ETH)
       if (
@@ -144,7 +145,8 @@ export class PortfolioAnalyzerService {
         ],
         functionName: 'balanceOf',
         args: [userAddress as `0x${string}`],
-      });
+        authorizationList: undefined,
+      } as any);
 
       return balance as bigint;
     } catch (error) {
@@ -156,35 +158,27 @@ export class PortfolioAnalyzerService {
   }
 
   /**
-   * Get token price in USD
-   * TODO: Integrate with Pyth oracle or price feeds
+   * Get token price in USD from Pyth oracle
    */
   private async getTokenPrice(
     tokenAddress: string,
     chainName: string,
   ): Promise<number> {
     try {
-      // TODO: Integrate with Pyth Network oracle
-      // For now, return mock prices for testing
+      // Use Pyth oracle for real-time prices
+      const price = await this.pythOracle.getTokenPrice(
+        tokenAddress,
+        chainName as 'monad' | 'base',
+      );
 
-      const lowerAddress = tokenAddress.toLowerCase();
-
-      // Mock prices (replace with real oracle integration)
-      const mockPrices: Record<string, number> = {
-        '0x0000000000000000000000000000000000000000': 2000, // ETH
-        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee': 2000, // ETH
-        // Add more mock prices as needed
-      };
-
-      const price = mockPrices[lowerAddress] || 1; // Default to $1 for stablecoins
-
-      this.logger.debug(`Mock price for ${tokenAddress}: $${price}`);
+      this.logger.debug(`Pyth price for ${tokenAddress}: $${price.toFixed(2)}`);
       return price;
     } catch (error) {
       this.logger.error(
-        `Failed to get price for ${tokenAddress}: ${error.message}`,
+        `Failed to get Pyth price for ${tokenAddress}: ${error.message}`,
       );
-      return 0;
+      // Fallback to $1 for stablecoins on error
+      return 1;
     }
   }
 

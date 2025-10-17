@@ -27,3 +27,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Documentation
+docs/
+docs/**

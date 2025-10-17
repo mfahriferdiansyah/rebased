@@ -15,4 +15,22 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: [
+      "wagmi",
+      "viem",
+      "@privy-io/react-auth",
+      "@privy-io/wagmi",
+      "@tanstack/react-query",
+      "ethers",
+      "@metamask/delegation-toolkit",
+    ],
+    exclude: [],
+    force: false,
+  },
+  build: {
+    commonjsOptions: {
+      include: [/node_modules/],
+    },
+  },
 }));

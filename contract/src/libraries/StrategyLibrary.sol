@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -15,6 +15,8 @@ import "../interfaces/IPythOracle.sol";
 library StrategyLibrary {
     struct Strategy {
         uint256 id;
+        address owner;        // EOA that owns the DeleGator smart account
+        address delegator;    // DeleGator smart account address (holds funds)
         address[] tokens;
         uint256[] weights;  // Basis points (100 = 1%)
         uint256 rebalanceInterval;
@@ -29,16 +31,16 @@ library StrategyLibrary {
 
     /**
      * @notice Calculate required swaps to rebalance portfolio
+     * @param account DeleGator smart account address (holds funds)
      * @param strategy Strategy configuration
-     * @param account User's MetaMask account address
      * @param oracle Price oracle address
      * @return tokensToSell Tokens that need to be sold
      * @return tokensToBuy Tokens that need to be bought
      * @return amountsToSell Amounts to sell for each token
      */
     function calculateRebalanceSwaps(
-        Strategy memory strategy,
         address account,
+        Strategy memory strategy,
         address oracle
     )
         external
@@ -117,12 +119,12 @@ library StrategyLibrary {
 
     /**
      * @notice Calculate current allocation weights
+     * @param account DeleGator smart account address (holds funds)
      * @param tokens Token addresses
-     * @param account User's account address
      * @param oracle Price oracle address
      * @return weights Current weights in basis points
      */
-    function calculateCurrentWeights(address[] memory tokens, address account, address oracle)
+    function calculateCurrentWeights(address account, address[] memory tokens, address oracle)
         external
         view
         returns (uint256[] memory weights)
@@ -183,12 +185,12 @@ library StrategyLibrary {
 
     /**
      * @notice Get total portfolio value in USD
+     * @param account DeleGator smart account address (holds funds)
      * @param tokens Token addresses
-     * @param account User's account address
      * @param oracle Price oracle address
      * @return totalValueUSD Portfolio value scaled to 18 decimals
      */
-    function getPortfolioValue(address[] memory tokens, address account, address oracle)
+    function getPortfolioValue(address account, address[] memory tokens, address oracle)
         external
         view
         returns (uint256 totalValueUSD)

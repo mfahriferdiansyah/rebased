@@ -56,3 +56,6 @@ temp/
 
 # NestJS
 .nest-cli.json.swp
+
+docs/
+docs/**

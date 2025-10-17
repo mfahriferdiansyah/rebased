@@ -20,7 +20,7 @@ export class DelegationsService {
   ) {}
 
   /**
-   * EIP-712 domain for delegation signatures
+   * EIP-712 domain for delegation signatures (MetaMask v1.3.0 compatible)
    */
   private getDomain(chainId: number) {
     // Map chainId to chain name: 10143 = Monad Testnet, 10200 = Monad Mainnet
@@ -31,20 +31,22 @@ export class DelegationsService {
     );
 
     return {
-      name: 'Rebased DelegationManager',
-      version: '1',
+      name: 'DelegationManager',
+      version: '1', // MUST match DelegationManager.sol DOMAIN_VERSION (not VERSION)
       chainId: BigInt(chainId),
       verifyingContract: delegationManagerAddress as `0x${string}`,
     };
   }
 
   /**
-   * EIP-712 types for delegation
+   * EIP-712 types for delegation (MetaMask Delegation Framework v1.3.0)
+   * NOTE: MetaMask v1.3.0 does NOT include a 'deadline' field in the Delegation struct
    */
   private getDelegationTypes() {
     return {
       Delegation: [
         { name: 'delegate', type: 'address' },
+        { name: 'delegator', type: 'address' },
         { name: 'authority', type: 'bytes32' },
         { name: 'caveats', type: 'Caveat[]' },
         { name: 'salt', type: 'uint256' },
@@ -68,6 +70,16 @@ export class DelegationsService {
       const domain = this.getDomain(dto.chainId);
       const types = this.getDelegationTypes();
 
+      // DEBUG: Log signature recovery inputs
+      console.log('🔍 BACKEND - Signature Recovery Debug:');
+      console.log('  chainId:', dto.chainId);
+      console.log('  signature:', dto.signature);
+      console.log('  delegationData:', JSON.stringify(dto.delegationData, null, 2));
+      console.log('  domain:', JSON.stringify(domain, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+      , 2));
+      console.log('  types:', JSON.stringify(types, null, 2));
+
       try {
         recoveredAddress = await recoverTypedDataAddress({
           domain,
@@ -76,7 +88,10 @@ export class DelegationsService {
           message: dto.delegationData,
           signature: dto.signature as `0x${string}`,
         });
+
+        console.log('✅ BACKEND - Recovered address:', recoveredAddress);
       } catch (error) {
+        console.error('❌ BACKEND - Recovery failed:', error);
         throw new BadRequestException(`Failed to recover address from signature: ${error.message}`);
       }
     } else {
@@ -93,8 +108,36 @@ export class DelegationsService {
         throw new NotFoundException('Strategy not found');
       }
 
-      if (strategy.userAddress !== recoveredAddress.toLowerCase()) {
-        throw new ForbiddenException('You do not own this strategy');
+      // New architecture validation:
+      // - strategy.userAddress = EOA owner (should match recovered address from signature)
+      // - strategy.delegatorAddress = DeleGator smart contract (should match delegation.delegator)
+
+      // Verify EOA ownership
+      const isOwner = strategy.userAddress === recoveredAddress.toLowerCase();
+
+      if (!isOwner) {
+        throw new ForbiddenException(
+          `Strategy ownership mismatch. Strategy is owned by ${strategy.userAddress}, ` +
+          `but delegation was signed by ${recoveredAddress}`
+        );
+      }
+
+      // Verify DeleGator is set - REQUIRED for production architecture
+      if (!strategy.delegatorAddress) {
+        throw new BadRequestException(
+          `Strategy ${strategy.id} does not have a DeleGator smart account configured. ` +
+          `Please complete the SmartAccountStep in the wizard first to create/link a DeleGator.`
+        );
+      }
+
+      // Verify DeleGator match
+      const delegatorMatches = strategy.delegatorAddress === dto.delegationData.delegator.toLowerCase();
+
+      if (!delegatorMatches) {
+        throw new BadRequestException(
+          `DeleGator mismatch. Strategy uses DeleGator ${strategy.delegatorAddress}, ` +
+          `but delegation is for ${dto.delegationData.delegator}`
+        );
       }
 
       if (strategy.chainId !== dto.chainId) {
@@ -211,21 +254,38 @@ export class DelegationsService {
   }
 
   /**
-   * Revoke a delegation
+   * Revoke a delegation (marks as inactive in database)
+   * @dev On-chain revocation must be done by user via frontend calling DelegationManager.disableDelegation()
    */
   async revoke(id: string, userAddress: string) {
     // Verify ownership
-    await this.findOne(id, userAddress);
+    const delegation = await this.findOne(id, userAddress);
 
-    // Mark as inactive
+    // Mark as inactive in database
     await this.prisma.delegation.update({
       where: { id },
       data: { isActive: false },
     });
 
-    // TODO: Also revoke on-chain via DelegationManager contract
-
-    return { success: true, message: 'Delegation revoked successfully' };
+    // Return delegation data for on-chain revocation
+    // Frontend will call DelegationManager.disableDelegation() with this data
+    return {
+      success: true,
+      message: 'Delegation marked as inactive in database',
+      onChainRevocationRequired: true,
+      delegationData: {
+        delegate: delegation.delegationData.delegate,
+        delegator: delegation.delegationData.delegator || userAddress,
+        authority: delegation.delegationData.authority || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        caveats: delegation.delegationData.caveats || [],
+        salt: delegation.delegationData.salt,
+        deadline: delegation.delegationData.deadline || 0,
+      },
+      contractAddress: this.config.get(
+        `blockchain.${delegation.chainId === 84532 ? 'base' : 'monad'}.contracts.delegationManager`,
+      ),
+      chainId: delegation.chainId,
+    };
   }
 
   /**

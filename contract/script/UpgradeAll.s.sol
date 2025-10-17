@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "forge-std/Script.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
@@ -182,7 +182,7 @@ contract UpgradeAll is Script {
         // Parse existing values
         string memory prefix = string.concat(".", chainName, ".");
 
-        // Create updated JSON manually
+        // Create updated JSON manually (without custom caveat enforcers - using MetaMask's built-in ones)
         string memory updatedJson = string.concat(
             "{\n  \"", chainName, "\": {\n",
             "    \"pythOracle\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "pythOracle"))), "\",\n",
@@ -192,11 +192,6 @@ contract UpgradeAll is Script {
             "    \"uniswapHelper\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "uniswapHelper"))), "\",\n",
             "    \"uniswapHelperImpl\": \"", vm.toString(newImpls.uniswapHelperImpl), "\",\n",
             "    \"delegationManager\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "delegationManager"))), "\",\n",
-            "    \"allowedTargetsEnforcer\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "allowedTargetsEnforcer"))), "\",\n",
-            "    \"allowedMethodsEnforcer\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "allowedMethodsEnforcer"))), "\",\n",
-            "    \"timestampEnforcer\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "timestampEnforcer"))), "\",\n",
-            "    \"limitedCallsEnforcer\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "limitedCallsEnforcer"))), "\",\n",
-            "    \"nativeTokenPaymentEnforcer\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "nativeTokenPaymentEnforcer"))), "\",\n",
             "    \"strategyRegistry\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "strategyRegistry"))), "\",\n",
             "    \"strategyRegistryImpl\": \"", vm.toString(newImpls.strategyRegistryImpl), "\",\n",
             "    \"rebalanceExecutor\": \"", vm.toString(vm.parseJsonAddress(json, string.concat(prefix, "rebalanceExecutor"))), "\",\n",

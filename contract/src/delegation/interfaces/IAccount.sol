@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
-import "../types/DelegationTypes.sol";
+import { PackedUserOperation } from "@account-abstraction/interfaces/PackedUserOperation.sol";
 
 /**
  * @title IAccount
@@ -29,7 +29,7 @@ interface IAccount {
      * MAY revert if validation fails
      */
     function validateUserOp(
-        DelegationTypes.PackedUserOperation calldata userOp,
+        PackedUserOperation calldata userOp,
         bytes32 userOpHash,
         uint256 missingAccountFunds
     ) external returns (uint256 validationData);

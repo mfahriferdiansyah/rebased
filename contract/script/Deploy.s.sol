@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "forge-std/Script.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -8,12 +8,7 @@ import "../src/RebalanceExecutor.sol";
 import "../src/PythOracle.sol";
 import "../src/UniswapHelper.sol";
 import "../src/RebalancerConfig.sol";
-import "../src/delegation/DelegationManager.sol";
-import "../src/delegation/enforcers/AllowedTargetsEnforcer.sol";
-import "../src/delegation/enforcers/AllowedMethodsEnforcer.sol";
-import "../src/delegation/enforcers/TimestampEnforcer.sol";
-import "../src/delegation/enforcers/LimitedCallsEnforcer.sol";
-import "../src/delegation/enforcers/NativeTokenPaymentEnforcer.sol";
+import { DelegationManager } from "@delegation-framework/DelegationManager.sol";
 
 /**
  * @title Deploy
@@ -42,11 +37,6 @@ contract Deploy is Script {
         address uniswapHelper;
         address uniswapHelperImpl;
         address delegationManager;
-        address allowedTargetsEnforcer;
-        address allowedMethodsEnforcer;
-        address timestampEnforcer;
-        address limitedCallsEnforcer;
-        address nativeTokenPaymentEnforcer;
         address strategyRegistry;
         address strategyRegistryImpl;
         address rebalanceExecutor;
@@ -128,42 +118,22 @@ contract Deploy is Script {
         console.log("  Proxy:", deployment.uniswapHelper);
 
         // ============================================
-        // 4. Deploy DelegationManager (Non-upgradeable)
+        // 4. Deploy MetaMask DelegationManager (Non-upgradeable)
         // ============================================
-        console.log("\n4. Deploying DelegationManager...");
-        DelegationManager delegationManager = new DelegationManager();
+        console.log("\n4. Deploying MetaMask DelegationManager...");
+        console.log("  Using official MetaMask Delegation Framework v1.3.0");
+        DelegationManager delegationManager = new DelegationManager(deployer);
         deployment.delegationManager = address(delegationManager);
         console.log("  Address:", deployment.delegationManager);
+        console.log("  Owner:", deployer);
+        console.log("  DeleGator-compatible: YES");
+        console.log("  ERC-7710 compliant: YES");
+        console.log("  Note: Using MetaMask's built-in caveat enforcers");
 
         // ============================================
-        // 5. Deploy Caveat Enforcers (Non-upgradeable)
+        // 5. Deploy StrategyRegistry (UUPS Proxy)
         // ============================================
-        console.log("\n5. Deploying Caveat Enforcers...");
-
-        AllowedTargetsEnforcer targetsEnforcer = new AllowedTargetsEnforcer();
-        deployment.allowedTargetsEnforcer = address(targetsEnforcer);
-        console.log("  AllowedTargetsEnforcer:", deployment.allowedTargetsEnforcer);
-
-        AllowedMethodsEnforcer methodsEnforcer = new AllowedMethodsEnforcer();
-        deployment.allowedMethodsEnforcer = address(methodsEnforcer);
-        console.log("  AllowedMethodsEnforcer:", deployment.allowedMethodsEnforcer);
-
-        TimestampEnforcer timestampEnforcer = new TimestampEnforcer();
-        deployment.timestampEnforcer = address(timestampEnforcer);
-        console.log("  TimestampEnforcer:", deployment.timestampEnforcer);
-
-        LimitedCallsEnforcer callsEnforcer = new LimitedCallsEnforcer();
-        deployment.limitedCallsEnforcer = address(callsEnforcer);
-        console.log("  LimitedCallsEnforcer:", deployment.limitedCallsEnforcer);
-
-        NativeTokenPaymentEnforcer paymentEnforcer = new NativeTokenPaymentEnforcer();
-        deployment.nativeTokenPaymentEnforcer = address(paymentEnforcer);
-        console.log("  NativeTokenPaymentEnforcer:", deployment.nativeTokenPaymentEnforcer);
-
-        // ============================================
-        // 6. Deploy StrategyRegistry (UUPS Proxy)
-        // ============================================
-        console.log("\n6. Deploying StrategyRegistry...");
+        console.log("\n5. Deploying StrategyRegistry...");
         StrategyRegistry registryImpl = new StrategyRegistry();
         deployment.strategyRegistryImpl = address(registryImpl);
         console.log("  Implementation:", deployment.strategyRegistryImpl);
@@ -177,9 +147,9 @@ contract Deploy is Script {
         console.log("  Proxy:", deployment.strategyRegistry);
 
         // ============================================
-        // 7. Deploy RebalanceExecutor (UUPS Proxy)
+        // 6. Deploy RebalanceExecutor (UUPS Proxy)
         // ============================================
-        console.log("\n7. Deploying RebalanceExecutor...");
+        console.log("\n6. Deploying RebalanceExecutor...");
         RebalanceExecutor executorImpl = new RebalanceExecutor();
         deployment.rebalanceExecutorImpl = address(executorImpl);
         console.log("  Implementation:", deployment.rebalanceExecutorImpl);
@@ -198,32 +168,27 @@ contract Deploy is Script {
         console.log("  Proxy:", deployment.rebalanceExecutor);
 
         // ============================================
-        // 8. Link Registry to Executor
+        // 7. Link Registry to Executor
         // ============================================
-        console.log("\n8. Linking Registry to Executor...");
+        console.log("\n7. Linking Registry to Executor...");
         StrategyRegistry(deployment.strategyRegistry).setRebalanceExecutor(deployment.rebalanceExecutor);
         console.log("  Registry linked to Executor");
 
         vm.stopBroadcast();
 
         // ============================================
-        // 9. Output Deployment Summary
+        // 8. Output Deployment Summary
         // ============================================
         console.log("\n=== DEPLOYMENT COMPLETE ===");
         console.log("PythOracle:", deployment.pythOracle);
         console.log("RebalancerConfig:", deployment.rebalancerConfig);
         console.log("UniswapHelper:", deployment.uniswapHelper);
         console.log("DelegationManager:", deployment.delegationManager);
-        console.log("AllowedTargetsEnforcer:", deployment.allowedTargetsEnforcer);
-        console.log("AllowedMethodsEnforcer:", deployment.allowedMethodsEnforcer);
-        console.log("TimestampEnforcer:", deployment.timestampEnforcer);
-        console.log("LimitedCallsEnforcer:", deployment.limitedCallsEnforcer);
-        console.log("NativeTokenPaymentEnforcer:", deployment.nativeTokenPaymentEnforcer);
         console.log("StrategyRegistry:", deployment.strategyRegistry);
         console.log("RebalanceExecutor:", deployment.rebalanceExecutor);
 
         // ============================================
-        // 10. Save Deployment to JSON
+        // 9. Save Deployment to JSON
         // ============================================
         _saveDeployment(chainName, deployment);
 
@@ -241,11 +206,6 @@ contract Deploy is Script {
             '    "uniswapHelper": "', vm.toString(deployment.uniswapHelper), '",\n',
             '    "uniswapHelperImpl": "', vm.toString(deployment.uniswapHelperImpl), '",\n',
             '    "delegationManager": "', vm.toString(deployment.delegationManager), '",\n',
-            '    "allowedTargetsEnforcer": "', vm.toString(deployment.allowedTargetsEnforcer), '",\n',
-            '    "allowedMethodsEnforcer": "', vm.toString(deployment.allowedMethodsEnforcer), '",\n',
-            '    "timestampEnforcer": "', vm.toString(deployment.timestampEnforcer), '",\n',
-            '    "limitedCallsEnforcer": "', vm.toString(deployment.limitedCallsEnforcer), '",\n',
-            '    "nativeTokenPaymentEnforcer": "', vm.toString(deployment.nativeTokenPaymentEnforcer), '",\n',
             '    "strategyRegistry": "', vm.toString(deployment.strategyRegistry), '",\n',
             '    "strategyRegistryImpl": "', vm.toString(deployment.strategyRegistryImpl), '",\n',
             '    "rebalanceExecutor": "', vm.toString(deployment.rebalanceExecutor), '",\n',

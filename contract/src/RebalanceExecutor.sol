@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.23;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -11,22 +11,26 @@ import "./interfaces/IPythOracle.sol";
 import "./interfaces/IUniswapHelper.sol";
 import "./interfaces/IRebalancerConfig.sol";
 import "./delegation/interfaces/IDelegationManager.sol";
+import { Delegation, ModeCode, Execution } from "@delegation-framework/utils/Types.sol";
+import { ExecutionLib } from "@erc7579/lib/ExecutionLib.sol";
 import "./delegation/types/DelegationTypes.sol";
 
 /**
  * @title RebalanceExecutor
  * @notice Executes portfolio rebalances via MetaMask DelegationManager
- * @dev Non-custodial: All swaps execute from user's MetaMask account
+ * @dev SMART ACCOUNT ONLY: All rebalances execute from MetaMask DeleGator accounts
  *
  * Flow:
  * 1. Bot calls rebalance(userAccount, strategyId, delegation)
  * 2. Read strategy from StrategyRegistry
- * 3. Calculate swaps using StrategyLibrary
- * 4. Build swap calldata for each swap
- * 5. Execute via DelegationManager.redeemDelegations()
- * 6. DelegationManager calls user's DeleGator.execute()
- * 7. Swaps happen IN user's MetaMask account
- * 8. Bot receives gas reimbursement
+ * 3. Validate userAccount is a DeleGator smart account
+ * 4. Verify DeleGator owner matches strategy owner
+ * 5. Calculate swaps using StrategyLibrary
+ * 6. Build swap calldata for each swap
+ * 7. Execute via DelegationManager.redeemDelegations()
+ * 8. DelegationManager calls DeleGator.executeFromExecutor()
+ * 9. Swaps happen IN the DeleGator (funds stay in smart account)
+ * 10. Bot receives gas reimbursement
  */
 contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     IDelegationManager public delegationManager;
@@ -51,6 +55,15 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     event EmergencyPaused(address indexed caller);
     event EmergencyUnpaused(address indexed caller);
 
+    // DEBUG: Detailed logging events for error tracing
+    event DebugRebalanceStarted(address indexed user, uint256 indexed strategyId, address sender);
+    event DebugStrategyFetched(address indexed user, uint256 indexed strategyId, bool isActive, address owner);
+    event DebugDeleGatorValidated(address indexed user, address delegatorOwner);
+    event DebugDriftCalculated(uint256 drift, uint256 maxDrift, uint256 portfolioValue);
+    event DebugSwapValidationPassed(uint256 swapCount);
+    event DebugBeforeDelegationCall(uint256 permissionContextsLength, uint256 modesLength, uint256 executionLength);
+    event DebugAfterDelegationCall(uint256 driftBefore, uint256 driftAfter, uint256 valueBefore, uint256 valueAfter);
+
     // Errors
     error StrategyNotActive();
     error TooSoonToRebalance();
@@ -62,6 +75,8 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     error SwapsDidNotImproveAllocation();
     error BalanceValidationFailed();
     error ContractPaused();
+    error NotADeleGator();
+    error InvalidDeleGatorOwner();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -153,12 +168,24 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     }
 
     /**
+     * @notice Update DelegationManager address
+     * @param _newDelegationManager New DelegationManager contract address
+     * @dev ADMIN ONLY: Allows owner to update DelegationManager in case of redeployment
+     */
+    function setDelegationManager(address _newDelegationManager) external onlyOwner {
+        require(_newDelegationManager != address(0), "Invalid delegation manager");
+        delegationManager = IDelegationManager(_newDelegationManager);
+    }
+
+    /**
      * @notice Execute a rebalance for a user's strategy
      * @param userAccount User's MetaMask DeleGator account address
      * @param strategyId Strategy ID to rebalance
+     * @param tokensIn Tokens being sold in each swap (for approval)
      * @param swapTargets Target contracts for each swap (from DEX aggregator)
      * @param swapCallDatas Pre-calculated optimal swap calldata (from off-chain DEX aggregator)
      * @param minOutputAmounts Minimum output amounts for slippage protection (SECURITY FIX HIGH-2)
+     * @param nativeValues Native token amounts to send with each swap (for native token swaps/wraps)
      * @param permissionContexts Encoded delegations (user's signed delegation)
      * @param modes Execution modes for DelegationManager
      *
@@ -172,20 +199,40 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * - HIGH-3: Validates swaps improve portfolio allocation
      * - HIGH-5: Validates final balances match expected values
      * - MEDIUM-1: Can be paused in emergency
+     * - NEW: Supports native token swaps via nativeValues parameter
+     * - NEW: Automatically approves tokens before swaps
      */
     function rebalance(
         address userAccount,
         uint256 strategyId,
+        address[] calldata tokensIn,
         address[] calldata swapTargets,
         bytes[] calldata swapCallDatas,
         uint256[] calldata minOutputAmounts,
+        uint256[] calldata nativeValues,
         bytes[] calldata permissionContexts,
-        bytes32[] calldata modes
+        ModeCode[] calldata modes
     ) external payable nonReentrant whenNotPaused {
+        // DEBUG: Log function entry
+        emit DebugRebalanceStarted(userAccount, strategyId, msg.sender);
+
         // 1. Get strategy from registry
         StrategyLibrary.Strategy memory strategy = registry.getStrategy(userAccount, strategyId);
+        emit DebugStrategyFetched(userAccount, strategyId, strategy.isActive, strategy.owner);
 
-        // 2. Validate strategy
+        // 2. Validate userAccount is a DeleGator smart account
+        if (!DelegationTypes.isDeleGator(userAccount)) {
+            revert NotADeleGator();
+        }
+
+        // 3. Verify strategy owner matches DeleGator owner (security check)
+        address delegatorOwner = DelegationTypes.getDeleGatorOwner(userAccount);
+        if (delegatorOwner == address(0) || delegatorOwner != strategy.owner) {
+            revert InvalidDeleGatorOwner();
+        }
+        emit DebugDeleGatorValidated(userAccount, delegatorOwner);
+
+        // 4. Validate strategy
         if (!strategy.isActive) {
             revert StrategyNotActive();
         }
@@ -194,23 +241,26 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
             revert TooSoonToRebalance();
         }
 
-        // 3. Calculate current drift and portfolio value BEFORE swaps
+        // 5. Calculate current drift and portfolio value BEFORE swaps
         uint256[] memory currentWeightsBefore =
-            StrategyLibrary.calculateCurrentWeights(strategy.tokens, userAccount, address(oracle));
+            StrategyLibrary.calculateCurrentWeights(userAccount, strategy.tokens, address(oracle));
         uint256 drift = StrategyLibrary.calculateDrift(currentWeightsBefore, strategy.weights);
 
         // SECURITY FIX HIGH-3: Store portfolio value before swaps
-        uint256 portfolioValueBefore = StrategyLibrary.getPortfolioValue(strategy.tokens, userAccount, address(oracle));
+        uint256 portfolioValueBefore = StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
 
-        // 4. Check drift exceeds threshold
+        // 6. Check drift exceeds threshold
         uint256 maxDrift = config.getMaxAllocationDrift();
         if (drift < maxDrift) {
             revert DriftBelowThreshold();
         }
+        emit DebugDriftCalculated(drift, maxDrift, portfolioValueBefore);
 
-        // 5. Validate swap data
+        // 7. Validate swap data
+        require(tokensIn.length == swapTargets.length, "TokensIn length mismatch");
         require(swapTargets.length == swapCallDatas.length, "Swap arrays length mismatch");
         require(swapTargets.length == minOutputAmounts.length, "Min output amounts length mismatch");
+        require(swapTargets.length == nativeValues.length, "Native values length mismatch");
         require(swapTargets.length > 0, "No swaps provided");
 
         // SECURITY FIX HIGH-1: Validate all swap targets are approved DEXs
@@ -226,22 +276,48 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 revert InsufficientSlippageProtection();
             }
         }
+        emit DebugSwapValidationPassed(swapTargets.length);
 
-        // 6. Build execution calldata for each swap
+        // 8. Build execution calldata for each swap using MetaMask's Execution format
         // Bot provides pre-calculated optimal routes from DEX aggregators
-        bytes[] memory executionCallDatas = new bytes[](swapTargets.length);
+        // Native values allow DeleGator to send its own native tokens with swaps/wraps
+
+        // Build Execution[] array with approval + swap for each token
+        // MetaMask's DelegationManager expects ERC-7579 Execution format
+        Execution[] memory executions = new Execution[](swapTargets.length * 2);
+        uint256 idx = 0;
 
         for (uint256 i = 0; i < swapTargets.length; i++) {
-            // Wrap the pre-calculated swap calldata in DeleGator.execute() call
-            executionCallDatas[i] =
-                abi.encodeWithSignature("execute(address,uint256,bytes)", swapTargets[i], 0, swapCallDatas[i]);
+            // 1. Approval execution: DeleGator approves DEX to spend tokens
+            executions[idx++] = Execution({
+                target: tokensIn[i],        // Token contract address
+                value: 0,                   // No native value for approval
+                callData: abi.encodeWithSignature(
+                    "approve(address,uint256)",
+                    swapTargets[i],
+                    type(uint256).max
+                )
+            });
+
+            // 2. Swap execution: DeleGator calls DEX to execute swap
+            executions[idx++] = Execution({
+                target: swapTargets[i],     // DEX contract address
+                value: nativeValues[i],     // Native token amount (for native swaps/wraps)
+                callData: swapCallDatas[i]  // Pre-calculated optimal swap route
+            });
         }
 
-        // 7. Execute via DelegationManager
+        // Encode executions using MetaMask's ExecutionLib (ERC-7579 format)
+        // This produces the correct format for DelegationManager.redeemDelegations()
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // 9. Execute via DelegationManager
+        emit DebugBeforeDelegationCall(permissionContexts.length, modes.length, executionCallDatas.length);
         try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
             // SECURITY FIX HIGH-3 & HIGH-5: Validate swaps improved allocation
             uint256[] memory currentWeightsAfter =
-                StrategyLibrary.calculateCurrentWeights(strategy.tokens, userAccount, address(oracle));
+                StrategyLibrary.calculateCurrentWeights(userAccount, strategy.tokens, address(oracle));
             uint256 driftAfter = StrategyLibrary.calculateDrift(currentWeightsAfter, strategy.weights);
 
             // Drift should be reduced after rebalancing
@@ -251,18 +327,20 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
 
             // SECURITY FIX HIGH-3: Portfolio value should not decrease significantly (allowing for slippage)
             uint256 portfolioValueAfter =
-                StrategyLibrary.getPortfolioValue(strategy.tokens, userAccount, address(oracle));
+                StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
             uint256 maxSlippageBps = config.getMaxSlippage();
             uint256 minAcceptableValue = (portfolioValueBefore * (10000 - maxSlippageBps)) / 10000;
+
+            emit DebugAfterDelegationCall(drift, driftAfter, portfolioValueBefore, portfolioValueAfter);
 
             if (portfolioValueAfter < minAcceptableValue) {
                 revert BalanceValidationFailed();
             }
 
-            // 8. Update strategy last rebalance time
+            // 10. Update strategy last rebalance time
             registry.updateLastRebalanceTime(userAccount, strategyId);
 
-            // 9. Calculate gas reimbursement
+            // 11. Calculate gas reimbursement
             uint256 gasReimbursed = msg.value;
 
             emit RebalanceExecuted(userAccount, strategyId, block.timestamp, drift, gasReimbursed);
@@ -293,7 +371,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 return (false, 0);
             }
 
-            try StrategyLibrary.calculateCurrentWeights(strategy.tokens, userAccount, address(oracle)) returns (
+            try StrategyLibrary.calculateCurrentWeights(userAccount, strategy.tokens, address(oracle)) returns (
                 uint256[] memory currentWeights
             ) {
                 drift = StrategyLibrary.calculateDrift(currentWeights, strategy.weights);
@@ -315,9 +393,348 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      */
     function getPortfolioValue(address userAccount, uint256 strategyId) external view returns (uint256 valueUSD) {
         try registry.getStrategy(userAccount, strategyId) returns (StrategyLibrary.Strategy memory strategy) {
-            return StrategyLibrary.getPortfolioValue(strategy.tokens, userAccount, address(oracle));
+            return StrategyLibrary.getPortfolioValue(userAccount, strategy.tokens, address(oracle));
         } catch {
             return 0;
+        }
+    }
+
+    // ============================================
+    // DEBUGGING FUNCTIONS
+    // ============================================
+
+    // Events for debugging
+    event DebugTestStrategyOwnership(
+        bool isValid,
+        address strategyOwner,
+        address delegatorOwner,
+        string error
+    );
+    event DebugTestDelegationNoOp(bool success, string message);
+    event DebugTestDelegationTransfer(bool success, string message);
+    event DebugTestDelegationApproval(bool success, string message);
+    event DebugTestDelegationSingleSwap(bool success, string message);
+
+    /**
+     * @notice DEBUG: Test strategy ownership validation ONLY
+     * @param userAccount DeleGator smart account address
+     * @param strategyId Strategy ID to validate
+     * @return isValid Whether validation passed
+     * @return strategyOwner Strategy owner from registry
+     * @return delegatorOwner DeleGator owner from contract
+     * @return error Error message if validation failed
+     * @dev This function ONLY tests registry + ownership checks, NO delegation
+     */
+    function testStrategyOwnership(address userAccount, uint256 strategyId)
+        external
+        view
+        returns (
+            bool isValid,
+            address strategyOwner,
+            address delegatorOwner,
+            string memory error
+        )
+    {
+        // Check if userAccount is a DeleGator
+        if (!DelegationTypes.isDeleGator(userAccount)) {
+            return (false, address(0), address(0), "NotADeleGator");
+        }
+
+        // Get DeleGator owner
+        delegatorOwner = DelegationTypes.getDeleGatorOwner(userAccount);
+        if (delegatorOwner == address(0)) {
+            return (false, address(0), delegatorOwner, "DeleGatorOwnerIsZero");
+        }
+
+        // Try to get strategy
+        try registry.getStrategy(userAccount, strategyId) returns (StrategyLibrary.Strategy memory strategy) {
+            strategyOwner = strategy.owner;
+
+            if (!strategy.isActive) {
+                return (false, strategyOwner, delegatorOwner, "StrategyNotActive");
+            }
+
+            if (strategyOwner != delegatorOwner) {
+                return (false, strategyOwner, delegatorOwner, "OwnerMismatch");
+            }
+
+            return (true, strategyOwner, delegatorOwner, "");
+        } catch {
+            return (false, address(0), delegatorOwner, "StrategyNotFound");
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with NO execution (tests signature + framework only)
+     * @param userAccount DeleGator smart account address
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests ONLY delegation framework - no swaps, no tokens, just signature validation
+     */
+    function testDelegationNoOp(
+        address userAccount,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build truly empty execution (no operations at all)
+        // This tests ONLY the delegation framework without any actual execution
+        Execution[] memory executions = new Execution[](0);  // Empty array = no-op
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationNoOp(true, "NoOp delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationNoOp(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            // Decode low-level revert
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationNoOp(false, decodedError);
+            return false;
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with token approval ONLY
+     * @param userAccount DeleGator smart account address
+     * @param token Token to approve
+     * @param spender Address to approve
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests delegation + approval (no swaps)
+     */
+    function testDelegationApproval(
+        address userAccount,
+        address token,
+        address spender,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build approval execution
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({
+            target: token,
+            value: 0,
+            callData: abi.encodeWithSignature("approve(address,uint256)", spender, type(uint256).max)
+        });
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationApproval(true, "Approval delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationApproval(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationApproval(false, decodedError);
+            return false;
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with token transfer
+     * @param userAccount DeleGator smart account address
+     * @param token Token to transfer
+     * @param recipient Recipient address
+     * @param amount Amount to transfer
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests delegation + token movement (no DEX swaps)
+     */
+    function testDelegationTransfer(
+        address userAccount,
+        address token,
+        address recipient,
+        uint256 amount,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build transfer execution
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({
+            target: token,
+            value: 0,
+            callData: abi.encodeWithSignature("transfer(address,uint256)", recipient, amount)
+        });
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationTransfer(true, "Transfer delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationTransfer(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationTransfer(false, decodedError);
+            return false;
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with single swap (approval + swap)
+     * @param userAccount DeleGator smart account address
+     * @param tokenIn Token being sold
+     * @param swapTarget DEX contract address
+     * @param swapCallData Swap calldata
+     * @param nativeValue Native token amount (for native swaps)
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests delegation + ONE swap (minimal complexity)
+     */
+    function testDelegationSingleSwap(
+        address userAccount,
+        address tokenIn,
+        address swapTarget,
+        bytes calldata swapCallData,
+        uint256 nativeValue,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build approval + swap executions
+        Execution[] memory executions = new Execution[](2);
+
+        // 1. Approval
+        executions[0] = Execution({
+            target: tokenIn,
+            value: 0,
+            callData: abi.encodeWithSignature("approve(address,uint256)", swapTarget, type(uint256).max)
+        });
+
+        // 2. Swap
+        executions[1] = Execution({
+            target: swapTarget,
+            value: nativeValue,
+            callData: swapCallData
+        });
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationSingleSwap(true, "Single swap delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationSingleSwap(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationSingleSwap(false, decodedError);
+            return false;
+        }
+    }
+
+    // Event for swap-only test
+    event DebugTestDelegationSwapOnly(bool success, string message);
+
+    /**
+     * @notice DEBUG: Test delegation with ONLY swap (no approval) - Level 5b
+     * @param userAccount DeleGator smart account address
+     * @param swapTarget DEX contract address
+     * @param swapCallData Swap calldata
+     * @param nativeValue Native token amount (for native swaps)
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Assumes approval is already set (from Level 3). Tests if swap alone works through delegation.
+     *      This isolates whether the problem is batch execution or the swap itself.
+     */
+    function testDelegationSwapOnly(
+        address userAccount,
+        address swapTarget,
+        bytes calldata swapCallData,
+        uint256 nativeValue,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build ONLY swap execution (approval assumed to be already set)
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({
+            target: swapTarget,
+            value: nativeValue,
+            callData: swapCallData
+        });
+
+        // Encode using ExecutionLib (BATCH mode even for single execution for consistency)
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationSwapOnly(true, "Swap-only delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationSwapOnly(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationSwapOnly(false, decodedError);
+            return false;
         }
     }
 
@@ -332,7 +749,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * @return Version string
      */
     function getVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.2.0-debug-delegation";
     }
 
     /**
