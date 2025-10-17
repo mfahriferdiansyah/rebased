@@ -217,6 +217,29 @@ export class ExecutorProcessor {
         }
       }
 
+      // NEW: Delegation debugging mode
+      const debugDelegationLevel = parseInt(this.config.get<string>('DEBUG_DELEGATION_LEVEL', '0'));
+
+      if (debugDelegationLevel > 0) {
+        this.logger.warn(`🔍 DEBUG_DELEGATION_LEVEL=${debugDelegationLevel} - Testing delegation step-by-step`);
+
+        const permissionContext = args[7][0] as `0x${string}`; // First permissionContext
+        const mode = args[8][0] as `0x${string}`; // First mode
+
+        await this.executeDebugDelegationMode(
+          debugDelegationLevel,
+          strategy,
+          swaps,
+          to,
+          permissionContext,
+          mode,
+          walletClient,
+          publicClient,
+        );
+
+        return; // Skip normal rebalance execution
+      }
+
       // Normal mode: Simulate contract call first
       const { request } = await publicClient.simulateContract({
         address: to,
@@ -382,16 +405,19 @@ export class ExecutorProcessor {
       c.args || ('0x' as `0x${string}`),
     ]);
 
+    // DelegationManager expects Delegation[] (array of delegations), not single Delegation
     const permissionContext = encodeAbiParameters(
-      parseAbiParameters('(address,address,bytes32,(address,bytes,bytes)[],uint256,bytes)'),
+      parseAbiParameters('(address,address,bytes32,(address,bytes,bytes)[],uint256,bytes)[]'),
       [
         [
-          delegationData.delegate as `0x${string}`,
-          delegatorAddress, // The DeleGator contract address
-          (delegationData.authority || '0x0000000000000000000000000000000000000000000000000000000000000000') as `0x${string}`,
-          caveats,
-          BigInt(delegationData.salt || 0),
-          delegation.signature as `0x${string}`,
+          [
+            delegationData.delegate as `0x${string}`,
+            delegatorAddress, // The DeleGator contract address
+            (delegationData.authority || '0x0000000000000000000000000000000000000000000000000000000000000000') as `0x${string}`,
+            caveats,
+            BigInt(delegationData.salt || 0),
+            delegation.signature as `0x${string}`,
+          ],
         ],
       ],
     );
@@ -416,9 +442,12 @@ export class ExecutorProcessor {
     const totalValue = 0n;
     this.logger.debug(`Bot msg.value: ${totalValue} (all funds from DeleGator)`);
 
-    // 4. Execution mode (SingleDefault = 0)
-    const MODE_SINGLE_DEFAULT =
-      '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`;
+    // 4. Execution mode (BATCH_DEFAULT_MODE)
+    // CRITICAL: Use BATCH mode because we're encoding with ExecutionLib.encodeBatch()
+    // SINGLE mode (0x00) expects encodeSingle format (abi.encodePacked)
+    // BATCH mode (0x01) expects encodeBatch format (abi.encode)
+    const MODE_BATCH_DEFAULT =
+      '0x0100000000000000000000000000000000000000000000000000000000000000' as `0x${string}`;
 
     // 5. Get executor address
     const executorAddress = CONTRACTS[chainName].executor;
@@ -434,10 +463,232 @@ export class ExecutorProcessor {
         minOutputAmounts,
         nativeValues,
         [permissionContext],
-        [MODE_SINGLE_DEFAULT],
+        [MODE_BATCH_DEFAULT],
       ],
       totalValue,
     };
+  }
+
+  /**
+   * Execute delegation debugging mode
+   * Tests delegation execution step-by-step based on debug level
+   */
+  private async executeDebugDelegationMode(
+    level: number,
+    strategy: any,
+    swaps: any[],
+    executorAddress: `0x${string}`,
+    permissionContext: `0x${string}`,
+    mode: `0x${string}`,
+    walletClient: any,
+    publicClient: any,
+  ) {
+    const userAccount = strategy.delegatorAddress as `0x${string}`;
+    const strategyId = BigInt(strategy.strategyId);
+
+    this.logger.log(`\n${'='.repeat(60)}`);
+    this.logger.log(`DELEGATION DEBUG LEVEL ${level}`);
+    this.logger.log('='.repeat(60));
+
+    try {
+      switch (level) {
+        case 1:
+          // Test strategy ownership (view call - no transaction)
+          this.logger.log('Level 1: Testing strategy ownership validation...');
+          const ownershipResult = await publicClient.readContract({
+            address: executorAddress,
+            abi: RebalanceExecutorABI,
+            functionName: 'testStrategyOwnership',
+            args: [userAccount, strategyId],
+          });
+
+          this.logger.log(`Result: ${JSON.stringify(ownershipResult)}`);
+          this.logger.log(`✅ Strategy ownership test ${ownershipResult[0] ? 'PASSED' : 'FAILED'}`);
+          if (!ownershipResult[0]) {
+            this.logger.error(`Error: ${ownershipResult[3]}`);
+          }
+          break;
+
+        case 2:
+          // Test delegation no-op (signature validation only)
+          this.logger.log('Level 2: Testing delegation signature validation (no-op execution)...');
+
+          // First simulate to check if it will revert
+          try {
+            const simulateResult = await publicClient.readContract({
+              address: executorAddress,
+              abi: RebalanceExecutorABI,
+              functionName: 'testDelegationNoOp',
+              args: [userAccount, permissionContext, mode],
+            });
+            this.logger.log(`Simulation result: ${simulateResult}`);
+          } catch (simError) {
+            this.logger.error(`Simulation failed: ${simError.message}`);
+          }
+
+          const noopHash = await walletClient.writeContract({
+            address: executorAddress,
+            abi: RebalanceExecutorABI,
+            functionName: 'testDelegationNoOp',
+            args: [userAccount, permissionContext, mode],
+            gas: 500000n, // Explicit gas limit to ensure enough gas
+          });
+
+          this.logger.log(`Transaction sent: ${noopHash}`);
+          const noopReceipt = await publicClient.waitForTransactionReceipt({ hash: noopHash });
+          this.logger.log(`Status: ${noopReceipt.status}`);
+          this.logger.log(`Gas used: ${noopReceipt.gasUsed.toString()}`);
+
+          // Check for events
+          if (noopReceipt.logs && noopReceipt.logs.length > 0) {
+            this.logger.log(`Found ${noopReceipt.logs.length} events:`);
+            noopReceipt.logs.forEach((log: any, i: number) => {
+              // Convert BigInt to string for logging
+              const logStr = JSON.stringify(log, (key, value) =>
+                typeof value === 'bigint' ? value.toString() : value
+              );
+              this.logger.log(`  Event ${i + 1}: ${logStr}`);
+            });
+          } else {
+            this.logger.warn('No events emitted');
+          }
+
+          this.logger.log(`✅ Delegation no-op test ${noopReceipt.status === 'success' ? 'PASSED' : 'FAILED'}`);
+          break;
+
+        case 3:
+          // Test delegation approval
+          this.logger.log('Level 3: Testing delegation with token approval...');
+          if (swaps.length === 0) {
+            this.logger.warn('No swaps available - cannot test approval');
+            return;
+          }
+
+          const firstSwap = swaps[0];
+          const approvalHash = await walletClient.writeContract({
+            address: executorAddress,
+            abi: RebalanceExecutorABI,
+            functionName: 'testDelegationApproval',
+            args: [
+              userAccount,
+              firstSwap.fromToken as `0x${string}`,
+              firstSwap.target as `0x${string}`,
+              permissionContext,
+              mode,
+            ],
+          });
+
+          this.logger.log(`Transaction sent: ${approvalHash}`);
+          const approvalReceipt = await publicClient.waitForTransactionReceipt({ hash: approvalHash });
+          this.logger.log(`Status: ${approvalReceipt.status}`);
+          this.logger.log(`✅ Delegation approval test ${approvalReceipt.status === 'success' ? 'PASSED' : 'FAILED'}`);
+          break;
+
+        case 4:
+          // Test delegation transfer
+          this.logger.log('Level 4: Testing delegation with token transfer...');
+          if (swaps.length === 0) {
+            this.logger.warn('No swaps available - cannot test transfer');
+            return;
+          }
+
+          const transferToken = swaps[0].fromToken as `0x${string}`;
+          const transferRecipient = walletClient.account.address; // Send to bot as test
+          const transferAmount = 1n; // Transfer 1 wei as test
+
+          const transferHash = await walletClient.writeContract({
+            address: executorAddress,
+            abi: RebalanceExecutorABI,
+            functionName: 'testDelegationTransfer',
+            args: [
+              userAccount,
+              transferToken,
+              transferRecipient,
+              transferAmount,
+              permissionContext,
+              mode,
+            ],
+          });
+
+          this.logger.log(`Transaction sent: ${transferHash}`);
+          const transferReceipt = await publicClient.waitForTransactionReceipt({ hash: transferHash });
+          this.logger.log(`Status: ${transferReceipt.status}`);
+          this.logger.log(`✅ Delegation transfer test ${transferReceipt.status === 'success' ? 'PASSED' : 'FAILED'}`);
+          break;
+
+        case 5:
+          // Test delegation single swap
+          this.logger.log('Level 5: Testing delegation with single swap (approve + swap batch)...');
+          if (swaps.length === 0) {
+            this.logger.warn('No swaps available - cannot test single swap');
+            return;
+          }
+
+          const singleSwap = swaps[0];
+          const swapHash = await walletClient.writeContract({
+            address: executorAddress,
+            abi: RebalanceExecutorABI,
+            functionName: 'testDelegationSingleSwap',
+            args: [
+              userAccount,
+              singleSwap.fromToken as `0x${string}`,
+              singleSwap.target as `0x${string}`,
+              singleSwap.data as `0x${string}`,
+              BigInt(singleSwap.value || 0),
+              permissionContext,
+              mode,
+            ],
+          });
+
+          this.logger.log(`Transaction sent: ${swapHash}`);
+          const swapReceipt = await publicClient.waitForTransactionReceipt({ hash: swapHash });
+          this.logger.log(`Status: ${swapReceipt.status}`);
+          this.logger.log(`✅ Delegation single swap test ${swapReceipt.status === 'success' ? 'PASSED' : 'FAILED'}`);
+          break;
+
+        case 6:
+          // Test delegation swap only (no approval - assumes Level 3 already set approval)
+          this.logger.log('Level 6: Testing delegation with swap ONLY (no approval)...');
+          this.logger.log('Note: Assumes approval is already set from Level 3 test');
+          if (swaps.length === 0) {
+            this.logger.warn('No swaps available - cannot test swap only');
+            return;
+          }
+
+          const swapOnlySwap = swaps[0];
+          const swapOnlyHash = await walletClient.writeContract({
+            address: executorAddress,
+            abi: RebalanceExecutorABI,
+            functionName: 'testDelegationSwapOnly',
+            args: [
+              userAccount,
+              swapOnlySwap.target as `0x${string}`,
+              swapOnlySwap.data as `0x${string}`,
+              BigInt(swapOnlySwap.value || 0),
+              permissionContext,
+              mode,
+            ],
+          });
+
+          this.logger.log(`Transaction sent: ${swapOnlyHash}`);
+          const swapOnlyReceipt = await publicClient.waitForTransactionReceipt({ hash: swapOnlyHash });
+          this.logger.log(`Status: ${swapOnlyReceipt.status}`);
+          this.logger.log(`✅ Delegation swap-only test ${swapOnlyReceipt.status === 'success' ? 'PASSED' : 'FAILED'}`);
+          break;
+
+        default:
+          this.logger.error(`Invalid DEBUG_DELEGATION_LEVEL: ${level}. Must be 1-6.`);
+      }
+    } catch (error) {
+      this.logger.error(`\n❌ DEBUG LEVEL ${level} FAILED`);
+      this.logger.error(`Error: ${error.message}`);
+      if (error.data) {
+        this.logger.error(`Revert data: ${error.data}`);
+      }
+      throw error;
+    } finally {
+      this.logger.log('='.repeat(60) + '\n');
+    }
   }
 
   /**

@@ -3,32 +3,24 @@ import { ConfigService } from '@nestjs/config';
 import { ChainService } from './chain.service';
 
 /**
- * Pyth Network Oracle Service
- * Fetches real-time crypto prices from Pyth on-chain oracles
+ * Pyth Oracle Service
+ * Fetches real-time crypto prices from OUR PythOracle wrapper contracts
  *
- * Pyth Price Feed IDs (testnet & mainnet):
- * - ETH/USD: 0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace
- * - USDC/USD: 0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a
- * - WETH is same as ETH
+ * Architecture:
+ * - Backend calls OUR PythOracle wrapper (not Pyth Network's native contract)
+ * - OUR PythOracle is configured via setPriceFeed() with Pyth feed IDs
+ * - OUR PythOracle handles stablecoin fallbacks and price scaling
+ * - Returns prices in USD scaled from 18 decimals
  */
 @Injectable()
 export class PythOracleService {
   private readonly logger = new Logger(PythOracleService.name);
 
-  // Pyth contract addresses per chain
+  // OUR PythOracle wrapper contracts (NOT Pyth Network's native contracts)
+  // These are configured with setPriceFeed() and have stablecoin fallback logic
   private readonly PYTH_CONTRACTS = {
-    monad: '0x2880aB155794e7179c9eE2e38200202908C17B43', // Monad testnet
-    base: '0xA2aa501b19aff244D90cc15a4Cf739D2725B5729',   // Base Sepolia
-  };
-
-  // Price feed IDs (same for all networks)
-  // NOTE: Some feeds may not be available on all testnets (like Monad)
-  private readonly PRICE_FEED_IDS: Record<string, `0x${string}`> = {
-    // ETH/USD (available on most testnets)
-    'ETH': '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
-    'WETH': '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
-    // USDC/USD (may not be available on all testnets)
-    'USDC': '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a',
+    monad: '0xf1B7083a8E624038Befe432EEBBF2a8f3aa47D22', // OUR PythOracle wrapper (Monad)
+    base: '0xe21e88f31a639d661e2d50D3c9E5DF1B1E3acff2',   // OUR PythOracle wrapper (Base)
   };
 
   // Token address to symbol mapping (Monad testnet)
@@ -43,24 +35,12 @@ export class PythOracleService {
     // Add Base tokens here
   };
 
-  // Pyth contract ABI (minimal for getPrice)
+  // OUR PythOracle ABI (getPrice returns uint256 scaled to 18 decimals)
   private readonly PYTH_ABI = [
     {
-      inputs: [{ internalType: 'bytes32', name: 'id', type: 'bytes32' }],
+      inputs: [{ internalType: 'address', name: 'token', type: 'address' }],
       name: 'getPrice',
-      outputs: [
-        {
-          components: [
-            { internalType: 'int64', name: 'price', type: 'int64' },
-            { internalType: 'uint64', name: 'conf', type: 'uint64' },
-            { internalType: 'int32', name: 'expo', type: 'int32' },
-            { internalType: 'uint256', name: 'publishTime', type: 'uint256' },
-          ],
-          internalType: 'struct PythStructs.Price',
-          name: 'price',
-          type: 'tuple',
-        },
-      ],
+      outputs: [{ internalType: 'uint256', name: 'price', type: 'uint256' }],
       stateMutability: 'view',
       type: 'function',
     },
@@ -72,7 +52,7 @@ export class PythOracleService {
   ) {}
 
   /**
-   * Get token price in USD from Pyth oracle
+   * Get token price in USD from OUR PythOracle wrapper
    * @param tokenAddress Token contract address
    * @param chainName Chain name ('monad' or 'base')
    * @returns Price in USD (e.g., 2500.45 for ETH)
@@ -81,38 +61,23 @@ export class PythOracleService {
     tokenAddress: string,
     chainName: 'monad' | 'base',
   ): Promise<number> {
-    // Get token symbol from address (declare at function scope for catch block access)
+    // Get token symbol for logging (declare at function scope for catch block access)
     const symbol = this.getTokenSymbol(tokenAddress, chainName);
 
     try {
-      if (!symbol) {
-        this.logger.warn(`Unknown token address ${tokenAddress} on ${chainName}, defaulting to $1`);
-        return 1; // Default for unknown tokens (likely stablecoins)
-      }
+      // Fetch price from OUR PythOracle wrapper (no need for feed IDs - just pass token address)
+      const price = await this.fetchPythPrice(tokenAddress, chainName);
 
-      // Get Pyth price feed ID
-      const priceFeedId = this.PRICE_FEED_IDS[symbol];
-
-      if (!priceFeedId) {
-        this.logger.warn(`No Pyth price feed for ${symbol}, defaulting to $1`);
-        return 1;
-      }
-
-      // Fetch price from Pyth contract
-      const price = await this.fetchPythPrice(priceFeedId, chainName);
-
-      this.logger.debug(`Pyth price for ${symbol}: $${price.toFixed(2)}`);
+      this.logger.debug(`Pyth price for ${tokenAddress} (${symbol || 'unknown'}): $${price.toFixed(2)}`);
       return price;
     } catch (error) {
-      // Handle price feed not found (common on testnets for some assets)
-      if (error.message?.includes('0x19abf40e')) {
+      // Handle price feed not found (OUR PythOracle returns $1 for stablecoins automatically)
+      if (error.message?.includes('0x19abf40e') || error.message?.includes('NoFeedConfigured')) {
         this.logger.warn(
-          `Pyth price feed not available for ${symbol || 'unknown'} on ${chainName} testnet, using fallback $1`,
+          `Pyth price feed not available for ${symbol || tokenAddress} on ${chainName}, using fallback $1`,
         );
-        // For USDC/stablecoins, $1 is a reasonable fallback
-        if (symbol === 'USDC' || symbol === 'USDT' || symbol === 'DAI') {
-          return 1.0;
-        }
+        // For stablecoins, $1 is a reasonable fallback
+        return 1.0;
       }
 
       this.logger.error(
@@ -143,29 +108,33 @@ export class PythOracleService {
   }
 
   /**
-   * Fetch price from Pyth contract
+   * Fetch price from OUR PythOracle wrapper
+   * @param tokenAddress Token contract address
+   * @param chainName Chain name
+   * @returns Price in USD
    */
   private async fetchPythPrice(
-    priceFeedId: `0x${string}`,
+    tokenAddress: string,
     chainName: 'monad' | 'base',
   ): Promise<number> {
     const client = this.chain.getPublicClient(chainName);
     const pythContract = this.PYTH_CONTRACTS[chainName] as `0x${string}`;
 
+    // Call OUR PythOracle's getPrice(address) function
     const result = await client.readContract({
       address: pythContract,
       abi: this.PYTH_ABI,
       functionName: 'getPrice',
-      args: [priceFeedId],
+      args: [tokenAddress as `0x${string}`],
       authorizationList: undefined,
     } as any);
 
-    // Pyth returns: { price: int64, conf: uint64, expo: int32, publishTime: uint256 }
-    const { price, expo } = result as { price: bigint; expo: number };
+    // OUR PythOracle returns uint256 scaled to 18 decimals
+    // Example: 3934000000000000000000 = $3934 * 10^18
+    const priceWei = result as bigint;
 
-    // Convert to USD: price * 10^expo
-    // Example: price=2500_00000000, expo=-8 => 2500.00000000 => $2500
-    const priceUSD = Number(price) * Math.pow(10, expo);
+    // Convert from 18 decimals to USD: divide by 10^18
+    const priceUSD = Number(priceWei) / 1e18;
 
     return priceUSD;
   }
@@ -188,16 +157,21 @@ export class PythOracleService {
   }
 
   /**
-   * Health check: verify Pyth oracle is accessible
+   * Health check: verify OUR PythOracle is accessible
    */
   async healthCheck(chainName: 'monad' | 'base'): Promise<boolean> {
     try {
-      // Try to fetch ETH price as health check
-      const ethPrice = await this.fetchPythPrice(
-        this.PRICE_FEED_IDS.ETH,
-        chainName,
-      );
-      return ethPrice > 0;
+      // Try to fetch WETH price as health check
+      const tokenMap = chainName === 'monad' ? this.TOKEN_SYMBOLS_MONAD : this.TOKEN_SYMBOLS_BASE;
+      const wethAddress = Object.keys(tokenMap).find(addr => tokenMap[addr] === 'WETH');
+
+      if (!wethAddress) {
+        this.logger.warn(`No WETH address configured for ${chainName}`);
+        return false;
+      }
+
+      const price = await this.fetchPythPrice(wethAddress, chainName);
+      return price > 0;
     } catch (error) {
       this.logger.warn(`Pyth health check failed on ${chainName}: ${error.message}`);
       return false;

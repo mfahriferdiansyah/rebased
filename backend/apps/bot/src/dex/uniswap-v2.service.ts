@@ -4,6 +4,7 @@ import { SupportedChain } from '@app/blockchain/chains';
 import { encodeFunctionData, parseAbiParameters } from 'viem';
 
 interface UniswapV2Quote {
+  amountIn: bigint;
   amountOut: bigint;
   path: string[];
   router: string;
@@ -145,6 +146,7 @@ export class UniswapV2Service {
       );
 
       return {
+        amountIn,
         amountOut,
         path: path.map(addr => addr.toString()),
         router,
@@ -180,7 +182,7 @@ export class UniswapV2Service {
       abi: UNISWAP_V2_ROUTER_ABI,
       functionName: 'swapExactTokensForTokens',
       args: [
-        quote.amountOut, // Use the quoted amount
+        quote.amountIn, // Amount of input token to swap (FIXED: was incorrectly using amountOut)
         minOutput,
         quote.path as `0x${string}`[],
         userAccount as `0x${string}`,

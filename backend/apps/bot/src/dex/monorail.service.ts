@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
 interface MonorailQuote {
@@ -59,7 +60,7 @@ export class MonorailService {
   private readonly PATHFINDER_URL = 'https://testnet-pathfinder.monorail.xyz/v4';
   private readonly DATA_URL = 'https://testnet-api.monorail.xyz/v1';
 
-  constructor() {
+  constructor(private readonly config: ConfigService) {
     this.axios = axios.create({
       timeout: 15000,
     });
@@ -76,6 +77,13 @@ export class MonorailService {
     decimalsIn: number = 18,
   ): Promise<MonorailQuote | null> {
     try {
+      // Check if Monorail is disabled (for testing Uniswap V2 fallback with smaller calldata)
+      const isDisabled = this.config.get<string>('DISABLE_MONORAIL') === 'true';
+      if (isDisabled) {
+        this.logger.warn('Monorail is disabled via DISABLE_MONORAIL flag - falling back to Uniswap V2');
+        throw new Error('Monorail disabled for calldata size testing');
+      }
+
       // Convert bigint amount to human-readable decimal format
       const amountFormatted = this.formatAmount(amountIn, decimalsIn);
 
@@ -92,7 +100,7 @@ export class MonorailService {
             to: tokenOut,
             amount: amountFormatted,
             sender: userAccount,
-            max_slippage: 100, // 1% slippage (100 basis points)
+            max_slippage: 500, // 5% slippage (500 basis points) - increased for testing
             deadline: 1800, // 30 minutes (in seconds)
           },
         },

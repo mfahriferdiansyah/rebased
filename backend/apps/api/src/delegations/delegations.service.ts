@@ -32,7 +32,7 @@ export class DelegationsService {
 
     return {
       name: 'DelegationManager',
-      version: '1.3.0',
+      version: '1', // MUST match DelegationManager.sol DOMAIN_VERSION (not VERSION)
       chainId: BigInt(chainId),
       verifyingContract: delegationManagerAddress as `0x${string}`,
     };
