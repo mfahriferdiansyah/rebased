@@ -195,14 +195,14 @@ export function useDelegation(chainId?: number) {
         // Use default bot executor if not provided
         const finalDelegateAddress = delegateAddress || getBotExecutorAddress(selectedChainId);
 
-        // 1. Generate delegation data
+        // 1. Generate delegation data (MetaMask v1.3.0 - no deadline field)
         const delegationData: DelegationData = {
           delegate: finalDelegateAddress,
           delegator: delegatorAddress || userAddress, // DeleGator smart account or EOA
           authority: createRootAuthority(), // Root delegation (no parent)
           caveats: createEmptyCaveats(), // No restrictions for MVP
           salt: generateDelegationSalt(), // Random 256-bit salt
-          deadline: 0n, // No expiration (0 = infinite)
+          // NOTE: deadline removed - not part of MetaMask v1.3.0
         };
 
         // 2. Switch wallet to target chain

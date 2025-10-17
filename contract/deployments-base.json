@@ -1,15 +1,15 @@
 {
   "base": {
-    "pythOracle": "0x770D416adfbC79C5B854CFD03B902b74432A4e09",
-    "pythOracleImpl": "0x3898D341368d9f8b7e9d880A96E89A2960Dfaba8",
-    "rebalancerConfig": "0x1c86DcbF1CCCb7a64B8af321e8e97C159ACc7A5C",
-    "rebalancerConfigImpl": "0x64Fe26C7da5edc452097e8f7Dc10cAef8623f1dF",
-    "uniswapHelper": "0x0E4C3bbA146dbDdCa63e1FD6Bbef702FA21d4a3E",
-    "uniswapHelperImpl": "0x1e931E0092fa7D0CE45847451CDcCfBbC9327B97",
-    "delegationManager": "0x3760a9760226486f71075767CC099A2B295f176A",
-    "strategyRegistry": "0xb6D1C6797D20f4285aE320852320613d1399EF89",
-    "strategyRegistryImpl": "0xbF269A674226E3D06075ef3D0841121f76A1CbbC",
-    "rebalanceExecutor": "0x2695f017a3B0587a299b4225aEf36a38F90606f0",
-    "rebalanceExecutorImpl": "0x6D2853Db0B7823fB19FaBB2A999A1c90f988D523"
+    "pythOracle": "0x907d3826Fdec91A0fED9C35E12435C9946202769",
+    "pythOracleImpl": "0xd6486e985Db773f3eb5767cE5FBe099e31D87A1e",
+    "rebalancerConfig": "0x733ceB447448A28f0BD58E58E985e057993b3b12",
+    "rebalancerConfigImpl": "0x5a7fc62B6EF9ACc5AD1a9a7E582b2A636ab83504",
+    "uniswapHelper": "0x5c3d38112C12ce75328d8fE10D63e16C90d8377f",
+    "uniswapHelperImpl": "0xAb87cf4A9ee8Ab510ca8a96546E71f97CD92DC8a",
+    "delegationManager": "0xe1DD9f7C03281A659998bDDd84019c93473F5C7e",
+    "strategyRegistry": "0xE0E0C7731b99659dC0b3624f2147bD929E3B503D",
+    "strategyRegistryImpl": "0x529D719b5E396533C25198FA62c9A4aD0cb11de9",
+    "rebalanceExecutor": "0x34cb23DEcB58E4b8343B9Df75Db40347CB9e9946",
+    "rebalanceExecutorImpl": "0x1270F73b0fd2353F60C48De48DDe86e1Ee54dc20"
   }
 }

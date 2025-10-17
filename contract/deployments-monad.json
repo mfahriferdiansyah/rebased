@@ -1,15 +1,15 @@
 {
   "monad": {
-    "pythOracle": "0xa6E97FC89563276C713213e517E7DF3AD8F96E29",
-    "pythOracleImpl": "0x38963106D06a18Dba899eE4005aA894941Be0B92",
-    "rebalancerConfig": "0x4877b731bbAA53bE1c3a7D88a5ee99Ed12bedA7B",
-    "rebalancerConfigImpl": "0xc158da6a0f1340bEAE186781D76117192549d561",
-    "uniswapHelper": "0x1605553be6F2A98e966314EE33a28D679Ee6c3B1",
-    "uniswapHelperImpl": "0xe46E23CE7D7F30Eb7751aa4E87c8a9b74a3C594b",
-    "delegationManager": "0xa0D4c1e28B44A1703eEb71461A8Ab9cF84D3b394",
-    "strategyRegistry": "0xf883d1f951A53D241B866ee0d53669AC11D4aD3f",
-    "strategyRegistryImpl": "0xa62A000c9e8F95d264FD2Ce830E4904dBe4D014c",
-    "rebalanceExecutor": "0xB2f77e9354f88005fc9414B107c9642373A0af7c",
-    "rebalanceExecutorImpl": "0x993ED3c5e3260771339Fbbf0d0EBd99D76b6207E"
+    "pythOracle": "0xD705648251CaaeE2c9653A9E079DA1ef3D477285",
+    "pythOracleImpl": "0xAe21e36B0Fd0B872CC9422094950Bd2e12b84d8a",
+    "rebalancerConfig": "0x2A530D32D59CEaCFFdc9c071e29735A9E9955F61",
+    "rebalancerConfigImpl": "0xacc41155385A27f904558496D3b59b4bd03D2446",
+    "uniswapHelper": "0x485086A79d5aECD8de04E383227D43d575c75C2D",
+    "uniswapHelperImpl": "0xDF8CFD2aD442C12DcAd479Cf3E0150e244657f27",
+    "delegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+    "strategyRegistry": "0xD2D554C6CCC071c84696a37Fb97A377E7426bA7A",
+    "strategyRegistryImpl": "0x513E6F8d2DDfA3e22FC84eEc15b8231af7Fd45e9",
+    "rebalanceExecutor": "0x4986DC56206C1bf061C376e1F1706d6498dfD50D",
+    "rebalanceExecutorImpl": "0x8241d36740EB1da3ABaAD5F379cbBEA3F064A98f"
   }
 }

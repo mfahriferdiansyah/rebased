@@ -168,6 +168,16 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     }
 
     /**
+     * @notice Update DelegationManager address
+     * @param _newDelegationManager New DelegationManager contract address
+     * @dev ADMIN ONLY: Allows owner to update DelegationManager in case of redeployment
+     */
+    function setDelegationManager(address _newDelegationManager) external onlyOwner {
+        require(_newDelegationManager != address(0), "Invalid delegation manager");
+        delegationManager = IDelegationManager(_newDelegationManager);
+    }
+
+    /**
      * @notice Execute a rebalance for a user's strategy
      * @param userAccount User's MetaMask DeleGator account address
      * @param strategyId Strategy ID to rebalance
@@ -389,6 +399,345 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         }
     }
 
+    // ============================================
+    // DEBUGGING FUNCTIONS
+    // ============================================
+
+    // Events for debugging
+    event DebugTestStrategyOwnership(
+        bool isValid,
+        address strategyOwner,
+        address delegatorOwner,
+        string error
+    );
+    event DebugTestDelegationNoOp(bool success, string message);
+    event DebugTestDelegationTransfer(bool success, string message);
+    event DebugTestDelegationApproval(bool success, string message);
+    event DebugTestDelegationSingleSwap(bool success, string message);
+
+    /**
+     * @notice DEBUG: Test strategy ownership validation ONLY
+     * @param userAccount DeleGator smart account address
+     * @param strategyId Strategy ID to validate
+     * @return isValid Whether validation passed
+     * @return strategyOwner Strategy owner from registry
+     * @return delegatorOwner DeleGator owner from contract
+     * @return error Error message if validation failed
+     * @dev This function ONLY tests registry + ownership checks, NO delegation
+     */
+    function testStrategyOwnership(address userAccount, uint256 strategyId)
+        external
+        view
+        returns (
+            bool isValid,
+            address strategyOwner,
+            address delegatorOwner,
+            string memory error
+        )
+    {
+        // Check if userAccount is a DeleGator
+        if (!DelegationTypes.isDeleGator(userAccount)) {
+            return (false, address(0), address(0), "NotADeleGator");
+        }
+
+        // Get DeleGator owner
+        delegatorOwner = DelegationTypes.getDeleGatorOwner(userAccount);
+        if (delegatorOwner == address(0)) {
+            return (false, address(0), delegatorOwner, "DeleGatorOwnerIsZero");
+        }
+
+        // Try to get strategy
+        try registry.getStrategy(userAccount, strategyId) returns (StrategyLibrary.Strategy memory strategy) {
+            strategyOwner = strategy.owner;
+
+            if (!strategy.isActive) {
+                return (false, strategyOwner, delegatorOwner, "StrategyNotActive");
+            }
+
+            if (strategyOwner != delegatorOwner) {
+                return (false, strategyOwner, delegatorOwner, "OwnerMismatch");
+            }
+
+            return (true, strategyOwner, delegatorOwner, "");
+        } catch {
+            return (false, address(0), delegatorOwner, "StrategyNotFound");
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with NO execution (tests signature + framework only)
+     * @param userAccount DeleGator smart account address
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests ONLY delegation framework - no swaps, no tokens, just signature validation
+     */
+    function testDelegationNoOp(
+        address userAccount,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build truly empty execution (no operations at all)
+        // This tests ONLY the delegation framework without any actual execution
+        Execution[] memory executions = new Execution[](0);  // Empty array = no-op
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationNoOp(true, "NoOp delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationNoOp(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            // Decode low-level revert
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationNoOp(false, decodedError);
+            return false;
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with token approval ONLY
+     * @param userAccount DeleGator smart account address
+     * @param token Token to approve
+     * @param spender Address to approve
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests delegation + approval (no swaps)
+     */
+    function testDelegationApproval(
+        address userAccount,
+        address token,
+        address spender,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build approval execution
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({
+            target: token,
+            value: 0,
+            callData: abi.encodeWithSignature("approve(address,uint256)", spender, type(uint256).max)
+        });
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationApproval(true, "Approval delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationApproval(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationApproval(false, decodedError);
+            return false;
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with token transfer
+     * @param userAccount DeleGator smart account address
+     * @param token Token to transfer
+     * @param recipient Recipient address
+     * @param amount Amount to transfer
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests delegation + token movement (no DEX swaps)
+     */
+    function testDelegationTransfer(
+        address userAccount,
+        address token,
+        address recipient,
+        uint256 amount,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build transfer execution
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({
+            target: token,
+            value: 0,
+            callData: abi.encodeWithSignature("transfer(address,uint256)", recipient, amount)
+        });
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationTransfer(true, "Transfer delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationTransfer(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationTransfer(false, decodedError);
+            return false;
+        }
+    }
+
+    /**
+     * @notice DEBUG: Test delegation with single swap (approval + swap)
+     * @param userAccount DeleGator smart account address
+     * @param tokenIn Token being sold
+     * @param swapTarget DEX contract address
+     * @param swapCallData Swap calldata
+     * @param nativeValue Native token amount (for native swaps)
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Tests delegation + ONE swap (minimal complexity)
+     */
+    function testDelegationSingleSwap(
+        address userAccount,
+        address tokenIn,
+        address swapTarget,
+        bytes calldata swapCallData,
+        uint256 nativeValue,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build approval + swap executions
+        Execution[] memory executions = new Execution[](2);
+
+        // 1. Approval
+        executions[0] = Execution({
+            target: tokenIn,
+            value: 0,
+            callData: abi.encodeWithSignature("approve(address,uint256)", swapTarget, type(uint256).max)
+        });
+
+        // 2. Swap
+        executions[1] = Execution({
+            target: swapTarget,
+            value: nativeValue,
+            callData: swapCallData
+        });
+
+        // Encode using ExecutionLib
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationSingleSwap(true, "Single swap delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationSingleSwap(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationSingleSwap(false, decodedError);
+            return false;
+        }
+    }
+
+    // Event for swap-only test
+    event DebugTestDelegationSwapOnly(bool success, string message);
+
+    /**
+     * @notice DEBUG: Test delegation with ONLY swap (no approval) - Level 5b
+     * @param userAccount DeleGator smart account address
+     * @param swapTarget DEX contract address
+     * @param swapCallData Swap calldata
+     * @param nativeValue Native token amount (for native swaps)
+     * @param permissionContext Encoded delegation with signature
+     * @param mode Execution mode
+     * @return success Whether delegation executed successfully
+     * @dev Assumes approval is already set (from Level 3). Tests if swap alone works through delegation.
+     *      This isolates whether the problem is batch execution or the swap itself.
+     */
+    function testDelegationSwapOnly(
+        address userAccount,
+        address swapTarget,
+        bytes calldata swapCallData,
+        uint256 nativeValue,
+        bytes calldata permissionContext,
+        ModeCode mode
+    ) external returns (bool success) {
+        // Build ONLY swap execution (approval assumed to be already set)
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({
+            target: swapTarget,
+            value: nativeValue,
+            callData: swapCallData
+        });
+
+        // Encode using ExecutionLib (BATCH mode even for single execution for consistency)
+        bytes[] memory executionCallDatas = new bytes[](1);
+        executionCallDatas[0] = ExecutionLib.encodeBatch(executions);
+
+        // Build arrays for redeemDelegations
+        bytes[] memory permissionContexts = new bytes[](1);
+        permissionContexts[0] = permissionContext;
+
+        ModeCode[] memory modes = new ModeCode[](1);
+        modes[0] = mode;
+
+        // Try to execute
+        try delegationManager.redeemDelegations(permissionContexts, modes, executionCallDatas) {
+            emit DebugTestDelegationSwapOnly(true, "Swap-only delegation succeeded");
+            return true;
+        } catch Error(string memory reason) {
+            emit DebugTestDelegationSwapOnly(false, reason);
+            return false;
+        } catch (bytes memory lowLevelData) {
+            string memory decodedError = lowLevelData.length > 0
+                ? string(abi.encodePacked("LowLevelRevert:", lowLevelData))
+                : "LowLevelRevertNoData";
+            emit DebugTestDelegationSwapOnly(false, decodedError);
+            return false;
+        }
+    }
+
     /**
      * @notice Authorize upgrade (UUPS requirement)
      * @param newImplementation New implementation address
@@ -400,7 +749,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * @return Version string
      */
     function getVersion() external pure returns (string memory) {
-        return "1.1.0-debug";
+        return "1.2.0-debug-delegation";
     }
 
     /**
