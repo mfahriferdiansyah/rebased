@@ -52,14 +52,13 @@ export function StartBlock({
   return (
     <div
       className={`
-        absolute bg-white rounded-lg p-3
-        border border-gray-300
+        absolute bg-white rounded-lg p-4
+        border-2 border-gray-400
         overflow-hidden
         transition-shadow duration-200 transition-colors duration-200
-        ${isSelected ? "ring-2 ring-gray-900 shadow-md" : "shadow-sm"}
+        ${isSelected ? "ring-2 ring-gray-900 shadow-lg" : "shadow-md"}
         ${isInConnectionMode ? "ring-2 ring-blue-400" : ""}
         ${isDimmed ? "opacity-35 grayscale-[50%] cursor-not-allowed" : connectionModeActive ? "cursor-pointer" : "cursor-move"}
-        hover:shadow-md hover:border-gray-400
       `}
       style={style}
       onMouseDown={onMouseDown}
@@ -67,13 +66,13 @@ export function StartBlock({
       onMouseLeave={onMouseLeave}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center">
-          <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center">
+          <Play className="w-5 h-5 text-white fill-white ml-0.5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-xs text-gray-700 uppercase tracking-wide">START</div>
-          <div className="text-[10px] text-gray-500">Initial Assets</div>
+          <div className="font-bold text-sm text-gray-900">START</div>
+          <div className="text-xs text-gray-500">Initial Assets</div>
         </div>
       </div>
 
