@@ -12,6 +12,7 @@ import { DeployStrategyStep } from './steps/DeployStrategyStep';
 import { FundTransferStep } from './steps/FundTransferStep';
 import { DelegationStep } from './steps/DelegationStep';
 import { ConfirmationStep } from './steps/ConfirmationStep';
+import { DelegationManagementStep } from './steps/DelegationManagementStep';
 import { strategiesApi } from '@/lib/api/strategies';
 import { useAuth } from '@/hooks/useAuth';
 import type { Address } from 'viem';
@@ -20,12 +21,14 @@ import type { Strategy } from '@/lib/types/strategy';
 interface StrategySetupWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  strategy: Strategy; // Canvas strategy (NOT saved to DB yet)
+  strategy?: Strategy; // Canvas strategy (optional for management-only mode)
   chainId: number;
+  initialStep?: WizardStep; // Starting step (default: 'smart-account')
+  initialDelegatorAddress?: Address; // For management mode when delegation exists
   onComplete?: () => void;
 }
 
-type WizardStep = 'smart-account' | 'deploy-strategy' | 'fund-transfer' | 'delegation' | 'confirmation';
+type WizardStep = 'smart-account' | 'deploy-strategy' | 'fund-transfer' | 'delegation' | 'confirmation' | 'manage';
 
 interface WizardState {
   currentStep: WizardStep;
@@ -60,6 +63,11 @@ const STEPS: { key: WizardStep; title: string; description: string }[] = [
     title: 'Confirmation',
     description: 'Review and complete setup',
   },
+  {
+    key: 'manage',
+    title: 'Manage',
+    description: 'Manage your delegation and settings',
+  },
 ];
 
 /**
@@ -78,15 +86,28 @@ export function StrategySetupWizard({
   onOpenChange,
   strategy,
   chainId,
+  initialStep = 'smart-account',
+  initialDelegatorAddress,
   onComplete,
 }: StrategySetupWizardProps) {
   const { getBackendToken } = useAuth();
   const [state, setState] = useState<WizardState>({
-    currentStep: 'smart-account',
-    delegatorAddress: null,
+    currentStep: initialStep,
+    delegatorAddress: initialDelegatorAddress || null,
     savedStrategyId: null, // Will be set after on-chain deployment
     completedSteps: new Set(),
   });
+
+  // Update currentStep and delegatorAddress when initialStep changes (e.g., when modal reopens)
+  useEffect(() => {
+    if (open) {
+      setState(prev => ({
+        ...prev,
+        currentStep: initialStep,
+        delegatorAddress: initialDelegatorAddress || prev.delegatorAddress,
+      }));
+    }
+  }, [open, initialStep, initialDelegatorAddress]);
 
   /**
    * Get current step index
@@ -180,7 +201,16 @@ export function StrategySetupWizard({
         }));
         break;
       case 'confirmation':
-        // Wizard complete
+        // Move to delegation management step
+        nextStep = 'manage';
+        setState(prev => ({
+          ...prev,
+          currentStep: nextStep,
+          completedSteps,
+        }));
+        break;
+      case 'manage':
+        // Management step complete - close wizard
         handleComplete();
         break;
     }
@@ -212,6 +242,19 @@ export function StrategySetupWizard({
       ...prev,
       currentStep: previousStep,
     }));
+  };
+
+  /**
+   * Handle delegation revocation - reset to step 1
+   */
+  const handleRevoke = () => {
+    // Reset wizard state to step 1
+    setState({
+      currentStep: 'smart-account',
+      delegatorAddress: null,
+      savedStrategyId: null,
+      completedSteps: new Set(),
+    });
   };
 
   /**
@@ -314,6 +357,19 @@ export function StrategySetupWizard({
           <ConfirmationStep
             delegatorAddress={state.delegatorAddress}
             onFinish={() => handleNextStep('confirmation')}
+          />
+        );
+
+      case 'manage':
+        if (!state.delegatorAddress) {
+          return <div className="text-red-600">Error: No delegator address</div>;
+        }
+        return (
+          <DelegationManagementStep
+            delegatorAddress={state.delegatorAddress}
+            chainId={chainId}
+            onRevoke={handleRevoke}
+            onFinish={() => handleNextStep('manage')}
           />
         );
 

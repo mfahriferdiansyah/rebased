@@ -67,6 +67,7 @@ const Index = () => {
 
   // Strategy setup wizard modal state
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+  const [wizardInitialStep, setWizardInitialStep] = useState<'smart-account' | 'manage'>('smart-account');
 
   // Handle block edit
   const handleBlockEdit = (block: Block) => {
@@ -339,8 +340,9 @@ const Index = () => {
               onBlockEdit={handleBlockEdit}
               activeDelegation={activeDelegation}
               onDelegationClick={async () => {
-                // Show wizard for first-time setup, or delegation modal for managing existing
+                // Show wizard for first-time setup or management
                 if (!activeDelegation) {
+                  // No delegation - start at step 1 (smart-account)
                   // Validate strategy before opening wizard
                   if (!strategy) {
                     toast({
@@ -374,10 +376,13 @@ const Index = () => {
                     return;
                   }
 
-                  // Open wizard directly (no save yet - deploy on-chain first)
+                  // Open wizard at step 1 (full setup)
+                  setWizardInitialStep('smart-account');
                   setIsSetupWizardOpen(true);
                 } else {
-                  setIsDelegationModalOpen(true);
+                  // Delegation exists - jump to step 6 (management)
+                  setWizardInitialStep('manage');
+                  setIsSetupWizardOpen(true);
                 }
               }}
             />
@@ -502,8 +507,10 @@ const Index = () => {
         <StrategySetupWizard
           open={isSetupWizardOpen}
           onOpenChange={setIsSetupWizardOpen}
-          strategy={strategy!}
-          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || 10143}
+          strategy={strategy}
+          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || strategyChainId || 10143}
+          initialStep={wizardInitialStep}
+          initialDelegatorAddress={activeDelegation?.delegationData.delegator}
           onComplete={async () => {
             // Refresh delegations to show new delegation on START block
             await refreshDelegations();
