@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { generateStrategyFromIntent } from "@/lib/ai/openai";
+import { aiApi } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { Strategy } from "@/lib/types/strategy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Send, Sparkles, Minimize2 } from "lucide-react";
 
 interface FloatingChatPanelProps {
   onStrategyGenerated: (strategy: Strategy) => void;
+  currentStrategy?: Strategy | null;
 }
 
 interface Message {
@@ -15,7 +17,8 @@ interface Message {
   content: string;
 }
 
-export function FloatingChatPanel({ onStrategyGenerated }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ onStrategyGenerated, currentStrategy }: FloatingChatPanelProps) {
+  const { getBackendToken } = useAuth();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -37,7 +40,25 @@ export function FloatingChatPanel({ onStrategyGenerated }: FloatingChatPanelProp
     setIsExpanded(true);
 
     try {
-      const strategy = await generateStrategyFromIntent(userMessage);
+      const token = await getBackendToken();
+      if (!token) {
+        throw new Error("Please sign in to use AI features");
+      }
+
+      // Build conversation history from messages (exclude initial assistant greeting)
+      const conversationHistory = messages
+        .slice(1) // Skip initial greeting
+        .map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        }));
+
+      const strategy = await aiApi.generateStrategy(
+        userMessage,
+        token,
+        currentStrategy,
+        conversationHistory,
+      );
 
       setMessages((prev) => [
         ...prev,
@@ -50,11 +71,12 @@ export function FloatingChatPanel({ onStrategyGenerated }: FloatingChatPanelProp
       onStrategyGenerated(strategy);
     } catch (error) {
       console.error("Strategy generation error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Sorry, I couldn't generate that strategy. Could you try describing it differently?";
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "Sorry, I couldn't generate that strategy. Could you try describing it differently?",
+          content: errorMessage,
         },
       ]);
     } finally {

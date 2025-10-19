@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,8 @@ import {
   Info,
   Link2,
   XCircle,
+  ExternalLink,
+  Coins,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -24,7 +26,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useDelegation } from '@/hooks/useDelegation';
 import { getChainById } from '@/lib/chains';
-import type { Address } from 'viem';
+import { useAccount, useBalance } from 'wagmi';
+import { formatEther, formatUnits, type Address } from 'viem';
+import { strategiesApi } from '@/lib/api/strategies';
+import { useAuth } from '@/hooks/useAuth';
+import { useSmartAccount } from '@/hooks/useSmartAccount';
+import type { Strategy } from '@/lib/types/strategy';
+import { BlockType, type AssetBlock } from '@/lib/types/blocks';
+import { CanvasPreview } from '@/components/preview/CanvasPreview';
 
 interface DelegationManagementStepProps {
   delegatorAddress: Address;
@@ -42,12 +51,24 @@ interface DelegationManagementStepProps {
  * - Link to strategy (optional)
  * - When revoked → trigger wizard reset to step 1
  */
+interface TokenBalance {
+  address: Address;
+  symbol: string;
+  decimals: number;
+  isNative: boolean;
+  eoaBalance?: bigint;
+  delegatorBalance?: bigint;
+}
+
 export function DelegationManagementStep({
   delegatorAddress,
   chainId,
   onRevoke,
   onFinish,
 }: DelegationManagementStepProps) {
+  const { address: userAddress } = useAccount();
+  const { getBackendToken } = useAuth();
+  const { getTokenBalance } = useSmartAccount();
   const {
     delegations,
     activeDelegation,
@@ -59,8 +80,82 @@ export function DelegationManagementStep({
 
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [strategy, setStrategy] = useState<Strategy | null>(null);
+  const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
+  const [loadingStrategy, setLoadingStrategy] = useState(false);
 
   const chain = getChainById(chainId);
+
+  // Get native balance for user's wallet and smart account
+  const { data: userNativeBalance } = useBalance({
+    address: userAddress,
+  });
+  const { data: smartAccountNativeBalance } = useBalance({
+    address: delegatorAddress,
+  });
+
+  /**
+   * Fetch strategy and token balances
+   */
+  useEffect(() => {
+    const fetchStrategyAndBalances = async () => {
+      if (!activeDelegation?.strategyId || !userAddress) return;
+
+      try {
+        setLoadingStrategy(true);
+
+        // Fetch strategy from backend
+        const token = await getBackendToken();
+        if (!token) return;
+
+        const strategyData = await strategiesApi.getStrategy(activeDelegation.strategyId, token);
+        setStrategy(strategyData);
+
+        // Extract asset blocks from strategyLogic
+        const assetBlocks = (strategyData as any).strategyLogic?.blocks?.filter(
+          (b: any) => b.type === BlockType.ASSET
+        ) || [];
+
+        // Get balances for each token
+        const balances: TokenBalance[] = [];
+        for (const asset of assetBlocks) {
+          const isNative = asset.data.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+          let eoaBalance = 0n;
+          let delegatorBalance = 0n;
+
+          try {
+            if (isNative) {
+              eoaBalance = userNativeBalance?.value || 0n;
+              delegatorBalance = smartAccountNativeBalance?.value || 0n;
+            } else {
+              eoaBalance = await getTokenBalance(asset.data.address as Address, userAddress, asset.data.decimals);
+              delegatorBalance = await getTokenBalance(asset.data.address as Address, delegatorAddress, asset.data.decimals);
+            }
+          } catch (err) {
+            console.error(`Failed to get balance for ${asset.data.symbol}:`, err);
+          }
+
+          balances.push({
+            address: asset.data.address as Address,
+            symbol: asset.data.symbol,
+            decimals: asset.data.decimals,
+            isNative,
+            eoaBalance,
+            delegatorBalance,
+          });
+        }
+
+        setTokenBalances(balances);
+      } catch (err) {
+        console.error('Failed to fetch strategy:', err);
+      } finally {
+        setLoadingStrategy(false);
+      }
+    };
+
+    fetchStrategyAndBalances();
+  }, [activeDelegation?.strategyId, userAddress, userNativeBalance, smartAccountNativeBalance]);
 
   /**
    * Handle delegation revocation
@@ -150,22 +245,19 @@ export function DelegationManagementStep({
 
             {/* Delegation Details */}
             <div className="space-y-2">
-              {/* Delegate Address */}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-green-700 font-medium">Delegate Address:</span>
-                <span className="font-mono text-green-900">
-                  {activeDelegation.delegateAddress.slice(0, 10)}...
-                  {activeDelegation.delegateAddress.slice(-8)}
-                </span>
-              </div>
-
-              {/* Delegator Address */}
+              {/* Smart Account Address - Clickable */}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-green-700 font-medium">Smart Account:</span>
-                <span className="font-mono text-green-900">
+                <a
+                  href={`${chain?.blockExplorers?.default?.url || ''}/address/${delegatorAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-green-900 hover:text-green-700 underline inline-flex items-center gap-1.5"
+                >
                   {delegatorAddress.slice(0, 10)}...
                   {delegatorAddress.slice(-8)}
-                </span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
 
               {/* Chain */}
@@ -222,32 +314,98 @@ export function DelegationManagementStep({
         </div>
       </div>
 
-      {/* Statistics (if available) */}
-      {stats && (
+      {/* Strategy Visual Preview */}
+      {activeDelegation.strategyId && strategy && (strategy as any).strategyLogic && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-medium text-gray-900">
+                Strategy Workflow
+              </div>
+              {(strategy as any).strategyLogic?.name && (
+                <span className="text-xs text-gray-600">
+                  ({(strategy as any).strategyLogic.name})
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="bg-white h-64">
+            {loadingStrategy ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <CanvasPreview
+                blocks={(strategy as any).strategyLogic.blocks || []}
+                connections={(strategy as any).strategyLogic.connections || []}
+                startBlockPos={(strategy as any).strategyLogic.startBlockPosition || { x: 50, y: 200 }}
+                endBlockPos={(strategy as any).strategyLogic.endBlockPosition || { x: 800, y: 200 }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Fund Balances - Strategy Assets */}
+      {activeDelegation.strategyId && (
         <div className="border rounded-lg p-4">
-          <div className="text-sm font-medium text-gray-900 mb-3">
-            Your Delegation Statistics
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">
-                {stats.totalDelegations}
-              </div>
-              <div className="text-xs text-gray-600 mt-0.5">Total</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-700">
-                {stats.activeDelegations}
-              </div>
-              <div className="text-xs text-gray-600 mt-0.5">Active</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-700">
-                {stats.revokedDelegations}
-              </div>
-              <div className="text-xs text-gray-600 mt-0.5">Revoked</div>
+          <div className="flex items-center gap-2 mb-3">
+            <Coins className="w-4 h-4 text-gray-600" />
+            <div className="text-sm font-medium text-gray-900">
+              Fund Balances {strategy && `(${(strategy as any).name || (strategy as any).strategyLogic?.name})`}
             </div>
           </div>
+
+          {loadingStrategy ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+          ) : tokenBalances.length > 0 ? (
+            <div className="space-y-3">
+              {tokenBalances.map((token) => (
+                <div key={token.address} className="border rounded-lg p-3">
+                  {/* Token Header */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="rounded-full bg-gray-100 p-1.5">
+                      <Coins className="w-3.5 h-3.5 text-gray-600" />
+                    </div>
+                    <div className="font-medium text-sm text-gray-900">{token.symbol}</div>
+                  </div>
+
+                  {/* Balances */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="border rounded-lg p-2 bg-blue-50 border-blue-200">
+                      <div className="text-xs text-blue-700 font-medium mb-0.5">Your Wallet</div>
+                      <div className="text-base font-bold text-blue-900">
+                        {token.eoaBalance !== undefined
+                          ? token.isNative
+                            ? formatEther(token.eoaBalance)
+                            : formatUnits(token.eoaBalance, token.decimals)
+                          : '0.00'}
+                      </div>
+                      <div className="text-xs text-blue-700">{token.symbol}</div>
+                    </div>
+
+                    <div className="border rounded-lg p-2 bg-green-50 border-green-200">
+                      <div className="text-xs text-green-700 font-medium mb-0.5">Smart Account</div>
+                      <div className="text-base font-bold text-green-900">
+                        {token.delegatorBalance !== undefined
+                          ? token.isNative
+                            ? formatEther(token.delegatorBalance)
+                            : formatUnits(token.delegatorBalance, token.decimals)
+                          : '0.00'}
+                      </div>
+                      <div className="text-xs text-green-700">{token.symbol}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 text-center py-4">
+              No strategy assets found
+            </div>
+          )}
         </div>
       )}
 

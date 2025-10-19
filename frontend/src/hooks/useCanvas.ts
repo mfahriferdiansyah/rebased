@@ -399,6 +399,114 @@ export function useCanvas() {
     }
   }, []);
 
+  const loadTemplate = useCallback(async () => {
+    // Fetch real tokens from the API
+    const { tokensApi } = await import('@/lib/api');
+
+    try {
+      const response = await tokensApi.getTokens([10143]);
+
+      // Find WETH and USDC from the fetched tokens (Monad only)
+      const weth = response.tokens.find(t => t.symbol === 'WETH') || response.tokens[0];
+      const usdc = response.tokens.find(t => t.symbol === 'USDC') || response.tokens[1];
+
+      const templateStrategy: Strategy = {
+        id: `strategy-${Date.now()}`,
+        name: "Rebalancing Template",
+        description: "Auto-rebalancing portfolio with 1 minute interval and 5% drift threshold",
+        startBlockPosition: { x: 50, y: 200 },
+        endBlockPosition: { x: 1150, y: 200 },
+        blocks: [
+          {
+            id: "asset-1",
+            type: BlockType.ASSET,
+            position: { x: 400, y: 100 },
+            size: { width: 200, height: 150 },
+            data: {
+              symbol: weth?.symbol || 'TOKEN',
+              name: weth?.name || 'Token',
+              address: weth?.address || '0x0',
+              chainId: weth?.chainId || 10143,
+              decimals: weth?.decimals || 18,
+              logoUri: weth?.logoUri,
+              initialWeight: 60,
+            },
+            connections: { inputs: ["start-block"], outputs: ["action-1"] },
+          },
+          {
+            id: "asset-2",
+            type: BlockType.ASSET,
+            position: { x: 400, y: 300 },
+            size: { width: 200, height: 150 },
+            data: {
+              symbol: usdc?.symbol || 'TOKEN',
+              name: usdc?.name || 'Token',
+              address: usdc?.address || '0x0',
+              chainId: usdc?.chainId || 10143,
+              decimals: usdc?.decimals || 6,
+              logoUri: usdc?.logoUri,
+              initialWeight: 40,
+            },
+            connections: { inputs: ["start-block"], outputs: ["action-1"] },
+          },
+          {
+            id: "action-1",
+            type: BlockType.ACTION,
+            position: { x: 750, y: 180 },
+            size: { width: 200, height: 180 },
+            data: {
+              actionType: "rebalance",
+              rebalanceTrigger: {
+                interval: 1, // 1 minute
+                drift: 5, // 5%
+              },
+              description: "Rebalance every 1 minute with 5% drift threshold",
+            },
+            connections: { inputs: ["asset-1", "asset-2"], outputs: [] },
+          },
+        ],
+        connections: [
+          {
+            id: "conn-start-1",
+            source: { blockId: "start-block", port: "output" },
+            target: { blockId: "asset-1", port: "input" },
+          },
+          {
+            id: "conn-start-2",
+            source: { blockId: "start-block", port: "output" },
+            target: { blockId: "asset-2", port: "input" },
+          },
+          {
+            id: "conn-asset-1-action",
+            source: { blockId: "asset-1", port: "output" },
+            target: { blockId: "action-1", port: "input" },
+          },
+          {
+            id: "conn-asset-2-action",
+            source: { blockId: "asset-2", port: "output" },
+            target: { blockId: "action-1", port: "input" },
+          },
+          {
+            id: "conn-action-end",
+            source: { blockId: "action-1", port: "output" },
+            target: { blockId: "end-block", port: "input" },
+          },
+        ],
+        metadata: {
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          version: "1.0",
+        },
+      };
+
+      setStrategy(templateStrategy);
+    } catch (error) {
+      console.error('Failed to load template:', error);
+      // Fallback to empty strategy
+      resetCanvas();
+    }
+  }, []);
+
   const clearStrategy = useCallback(() => {
     setStrategy(null);
     setSelectedBlockId(null);
@@ -409,6 +517,8 @@ export function useCanvas() {
       id: `strategy-${Date.now()}`,
       name: "Untitled Strategy",
       description: "",
+      startBlockPosition: { x: 50, y: 200 },
+      endBlockPosition: { x: 800, y: 200 },
       blocks: [],
       connections: [],
       metadata: {
@@ -570,6 +680,7 @@ export function useCanvas() {
     handleBlockUpdate,
     addBlock,
     createDemoStrategy,
+    loadTemplate,
     clearStrategy,
     resetCanvas,
     autoLayout,

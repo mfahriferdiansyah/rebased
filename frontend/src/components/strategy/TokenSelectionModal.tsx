@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Search, X } from 'lucide-react';
+import { Loader2, Search, X, Lock } from 'lucide-react';
 import { tokensApi } from '@/lib/api';
 import { Token } from '@/lib/types/token';
 import { toast } from 'sonner';
@@ -38,9 +38,9 @@ export function TokenSelectionModal({
 
   // Define available networks - using actual chain logos, NO emojis
   const networks = [
-    { id: 'all', name: 'All networks', logoUrl: null },
-    { id: '10143', name: 'Monad Testnet', logoUrl: getChainLogoUrl(10143) },
-    { id: '84532', name: 'Base Sepolia', logoUrl: getChainLogoUrl(84532) },
+    { id: 'all', name: 'All networks', logoUrl: null, locked: false },
+    { id: '10143', name: 'Monad Testnet', logoUrl: getChainLogoUrl(10143), locked: false },
+    { id: '84532', name: 'Base Sepolia', logoUrl: getChainLogoUrl(84532), locked: true },
   ];
 
   // Filter networks based on search
@@ -74,8 +74,8 @@ export function TokenSelectionModal({
   const fetchTokens = async () => {
     setLoading(true);
     try {
-      // When "All networks" is selected, fetch ONLY from chains 10143 (Monad) and 84532 (Base)
-      const chainIds = selectedChainFilter === 'all' ? [10143, 84532] : Number(selectedChainFilter);
+      // ONLY fetch Monad tokens (10143) - Base is coming soon
+      const chainIds = selectedChainFilter === 'all' ? [10143] : Number(selectedChainFilter);
       const response = await tokensApi.getTokens(chainIds);
       setTokens(response.tokens);
       setFilteredTokens(response.tokens);
@@ -197,12 +197,16 @@ export function TokenSelectionModal({
             <div className="px-3 py-2 space-y-0.5">
               {filteredNetworks.map((network) => {
                 const isSelected = selectedChainFilter === network.id;
+                const isLocked = network.locked;
                 return (
                   <button
                     key={network.id}
-                    onClick={() => handleNetworkSelect(network.id)}
+                    onClick={() => !isLocked && handleNetworkSelect(network.id)}
+                    disabled={isLocked}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all ${
-                      isSelected
+                      isLocked
+                        ? 'cursor-not-allowed opacity-50'
+                        : isSelected
                         ? 'bg-gray-900 text-white'
                         : 'hover:bg-gray-100 text-gray-900'
                     }`}
@@ -222,9 +226,18 @@ export function TokenSelectionModal({
                       </div>
                     )}
                     {/* Chain name - white when selected, gray otherwise */}
-                    <span className="text-sm font-medium">
+                    <span className="text-sm font-medium flex-1">
                       {network.name}
                     </span>
+                    {/* Lock icon and "Soon" badge for locked networks */}
+                    {isLocked && (
+                      <div className="flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-gray-400" />
+                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded">
+                          SOON
+                        </span>
+                      </div>
+                    )}
                   </button>
                 );
               })}

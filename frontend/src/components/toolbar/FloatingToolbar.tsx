@@ -21,6 +21,7 @@ interface FloatingToolbarProps {
   onBlockAdd: (type: BlockType) => void;
   onStrategyLoad: (strategy: Strategy) => void;
   onStrategySave?: () => void;
+  onTemplateLoad?: () => void;
   onReset: () => void;
   onAutoLayout: () => void;
   onUndo?: () => void;
@@ -30,7 +31,7 @@ interface FloatingToolbarProps {
   isSaving?: boolean;
 }
 
-export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrategySave, onReset, onAutoLayout, onUndo, onRedo, canUndo, canRedo, isSaving }: FloatingToolbarProps) {
+export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrategySave, onTemplateLoad, onReset, onAutoLayout, onUndo, onRedo, canUndo, canRedo, isSaving }: FloatingToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showMainMenu, setShowMainMenu] = useState(false);
@@ -81,6 +82,13 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrate
     toast.success("Blocks arranged automatically");
   };
 
+  const handleTemplateLoad = () => {
+    if (onTemplateLoad) {
+      onTemplateLoad();
+      toast.success("Template loaded successfully");
+    }
+  };
+
   return (
     <>
       <input
@@ -121,6 +129,29 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrate
             </div>
             <span className="text-sm font-bold text-gray-900">Rebased</span>
           </button>
+
+          {/* Use Template Button */}
+          {strategy && (
+            <>
+              <button
+                onClick={handleTemplateLoad}
+                className="
+                  px-2.5 py-1.5 rounded
+                  text-xs font-medium text-gray-700
+                  transition-all duration-200
+                  hover:bg-gray-100
+                  active:scale-95
+                  flex items-center gap-1.5
+                "
+                title="Load rebalancing template (1 min interval, 5% drift)"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Use Template</span>
+              </button>
+              {/* Separator */}
+              <div className="w-px h-6 bg-gray-300" />
+            </>
+          )}
 
           {/* Block Tools */}
           <div className="flex items-center gap-1">

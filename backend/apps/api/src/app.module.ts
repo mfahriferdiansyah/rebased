@@ -14,6 +14,7 @@ import { StrategiesModule } from './strategies/strategies.module';
 import { DelegationsModule } from './delegations/delegations.module';
 import { TokensModule } from './tokens/tokens.module';
 import { RebalancesModule } from './rebalances/rebalances.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { RebalancesModule } from './rebalances/rebalances.module';
     DelegationsModule,
     TokensModule,
     RebalancesModule,
+    AiModule,
   ],
 })
 export class AppModule {}
