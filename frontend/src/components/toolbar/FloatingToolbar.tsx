@@ -39,7 +39,6 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrate
     { type: BlockType.ASSET, icon: Wallet, label: "Asset" },
     { type: BlockType.CONDITION, icon: GitBranch, label: "Condition" },
     { type: BlockType.ACTION, icon: Zap, label: "Action" },
-    { type: BlockType.TRIGGER, icon: Clock, label: "Trigger" },
   ];
 
   const handleImport = () => {
@@ -194,8 +193,29 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrate
           {/* Separator */}
           <div className="w-px h-6 bg-gray-300" />
 
-          {/* Import/Export/Reset */}
+          {/* Save/Import/Export/Reset */}
           <div className="flex items-center gap-1">
+            {strategy && (
+              <button
+                onClick={onStrategySave}
+                disabled={isSaving || !onStrategySave}
+                className="
+                  px-2.5 py-1.5 rounded
+                  text-xs font-medium
+                  transition-all duration-200
+                  bg-gray-900 text-white
+                  hover:bg-gray-800
+                  active:scale-95
+                  disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-900
+                  flex items-center gap-1.5
+                "
+                title="Save Strategy to Backend"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSaving ? 'Saving...' : 'Save'}</span>
+              </button>
+            )}
+
             <button
               onClick={handleImport}
               className="
@@ -208,31 +228,12 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrate
               "
               title="Import Strategy"
             >
-              <Upload className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5" />
               <span>Import</span>
             </button>
 
             {strategy && (
               <>
-                <button
-                  onClick={onStrategySave}
-                  disabled={isSaving || !onStrategySave}
-                  className="
-                    px-2.5 py-1.5 rounded
-                    text-xs font-medium
-                    transition-all duration-200
-                    bg-gray-900 text-white
-                    hover:bg-gray-800
-                    active:scale-95
-                    disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-900
-                    flex items-center gap-1.5
-                  "
-                  title="Save Strategy to Backend"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{isSaving ? 'Saving...' : 'Save'}</span>
-                </button>
-
                 <button
                   onClick={handleExport}
                   className="
@@ -245,7 +246,7 @@ export function FloatingToolbar({ strategy, onBlockAdd, onStrategyLoad, onStrate
                   "
                   title="Export Strategy"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Upload className="w-3.5 h-3.5" />
                   <span>Export</span>
                 </button>
 

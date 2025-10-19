@@ -288,9 +288,6 @@ export function AuthRequiredModal({ onComplete }: AuthRequiredModalProps) {
                     <CheckCircle2 className="w-5 h-5 mr-2" />
                     Continue to Canvas
                   </Button>
-                  <p className="text-xs text-gray-500 text-center mt-3">
-                    Ready to start building strategies
-                  </p>
                 </motion.div>
               ) : null}
             </AnimatePresence>

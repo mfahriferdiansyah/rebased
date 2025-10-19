@@ -3,7 +3,7 @@ import {
   Dialog,
   DialogContent,
 } from "@/components/ui/dialog";
-import { Trophy, History, Settings, FileText, LogOut, Layers, Loader2 } from "lucide-react";
+import { Trophy, History, Settings, FileText, LogOut, Layers, Loader2, Lock } from "lucide-react";
 import { Strategy } from "@/lib/types/strategy";
 import { PlanCard } from "./PlanCard";
 import { Paginator } from "@/components/ui/paginator";
@@ -12,6 +12,7 @@ import { useDelegation } from "@/hooks/useDelegation";
 import { ApiStrategy } from "@/lib/types/api-strategy";
 import { BlockType, AssetBlock } from "@/lib/types/blocks";
 import { useToast } from "@/hooks/use-toast";
+import { HistoryView } from "@/components/history/HistoryView";
 
 interface MainMenuModalProps {
   open: boolean;
@@ -25,6 +26,7 @@ type MenuItem = {
   label: string;
   description: string;
   content: React.ReactNode;
+  locked?: boolean;
 };
 
 export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuModalProps) {
@@ -195,22 +197,22 @@ export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuMo
       icon: Trophy,
       label: "Leaderboard",
       description: "View top strategies",
+      locked: true,
       content: (
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-gray-900">Leaderboard</h3>
-          <p className="text-sm text-gray-600">View the top performing strategies from the community.</p>
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5].map((rank) => (
-              <div key={rank} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center font-bold text-sm">
-                  {rank}
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold text-sm text-gray-900">Strategy {rank}</div>
-                  <div className="text-xs text-gray-600">+{Math.floor(Math.random() * 50)}% returns</div>
-                </div>
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                <Lock className="w-8 h-8 text-gray-400" />
               </div>
-            ))}
+              <div>
+                <h4 className="font-semibold text-gray-900">Coming Soon</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  This feature is currently under development.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       ),
@@ -219,38 +221,29 @@ export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuMo
       id: "history",
       icon: History,
       label: "History",
-      description: "Your strategy history",
-      content: (
-        <div className="space-y-4">
-          <h3 className="text-lg font-bold text-gray-900">Strategy History</h3>
-          <p className="text-sm text-gray-600">View and manage your saved strategies.</p>
-          <div className="text-center py-8 text-gray-500 text-sm">
-            No strategies in history yet
-          </div>
-        </div>
-      ),
+      description: "Your rebalance history",
+      content: <HistoryView />,
     },
     {
       id: "docs",
       icon: FileText,
       label: "Documentation",
       description: "Learn how to build",
+      locked: true,
       content: (
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-gray-900">Documentation</h3>
-          <p className="text-sm text-gray-600">Learn how to build powerful trading strategies.</p>
-          <div className="space-y-3">
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="font-semibold text-sm text-gray-900">Getting Started</div>
-              <div className="text-xs text-gray-600 mt-1">Learn the basics of building strategies</div>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="font-semibold text-sm text-gray-900">Block Types</div>
-              <div className="text-xs text-gray-600 mt-1">Understanding different block types</div>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="font-semibold text-sm text-gray-900">Advanced Features</div>
-              <div className="text-xs text-gray-600 mt-1">Master complex strategies</div>
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                <Lock className="w-8 h-8 text-gray-400" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900">Coming Soon</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  This feature is currently under development.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -261,18 +254,21 @@ export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuMo
       icon: Settings,
       label: "Settings",
       description: "App preferences",
+      locked: true,
       content: (
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-gray-900">Settings</h3>
-          <p className="text-sm text-gray-600">Customize your experience.</p>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <span className="text-sm text-gray-900">Dark Mode</span>
-              <div className="w-10 h-6 bg-gray-300 rounded-full"></div>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <span className="text-sm text-gray-900">Notifications</span>
-              <div className="w-10 h-6 bg-gray-900 rounded-full"></div>
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                <Lock className="w-8 h-8 text-gray-400" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900">Coming Soon</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  This feature is currently under development.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -299,15 +295,28 @@ export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuMo
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isSelected = selectedItem === item.id;
+                const isLocked = item.locked;
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setSelectedItem(item.id)}
+                    onClick={() => {
+                      if (isLocked) {
+                        toast({
+                          title: 'Feature Locked',
+                          description: `${item.label} is currently under development for this hackathon. Stay tuned!`,
+                          variant: 'default',
+                        });
+                      } else {
+                        setSelectedItem(item.id);
+                      }
+                    }}
                     className={`
                       w-full flex items-center gap-3 p-3 rounded-lg
                       text-left transition-all duration-200
                       ${isSelected
                         ? "bg-gray-900 text-white"
+                        : isLocked
+                        ? "text-gray-400 cursor-not-allowed opacity-60"
                         : "text-gray-700 hover:bg-gray-100 active:scale-95"
                       }
                     `}
@@ -316,6 +325,9 @@ export function MainMenuModal({ open, onOpenChange, onStrategyLoad }: MainMenuMo
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm truncate">{item.label}</div>
                     </div>
+                    {isLocked && (
+                      <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+                    )}
                   </button>
                 );
               })}
