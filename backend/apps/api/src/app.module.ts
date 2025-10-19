@@ -13,6 +13,7 @@ import { HealthModule } from './health/health.module';
 import { StrategiesModule } from './strategies/strategies.module';
 import { DelegationsModule } from './delegations/delegations.module';
 import { TokensModule } from './tokens/tokens.module';
+import { RebalancesModule } from './rebalances/rebalances.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TokensModule } from './tokens/tokens.module';
     StrategiesModule,
     DelegationsModule,
     TokensModule,
+    RebalancesModule,
   ],
 })
 export class AppModule {}
