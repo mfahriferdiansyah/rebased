@@ -42,8 +42,8 @@ export const privyConfig: PrivyClientConfig = {
     showWalletUIs: true,
   },
 
-  // Supported blockchain networks
-  supportedChains: [monadTestnet, baseSepoliaTestnet],
+  // Supported blockchain networks - ONLY Monad for hackathon (Base coming soon)
+  supportedChains: [monadTestnet],
 
   // Default chain when wallet is first created
   defaultChain: monadTestnet,

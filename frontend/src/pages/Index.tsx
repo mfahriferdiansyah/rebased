@@ -11,6 +11,8 @@ import { useStrategy } from "@/hooks/useStrategy";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { strategiesApi } from "@/lib/api/strategies";
+import type { Strategy } from "@/lib/types/strategy";
 import { BlockType, Block, AssetBlock, ConditionBlock, ActionBlock } from "@/lib/types/blocks";
 import { AssetBlockEditModal } from "@/components/blocks/AssetBlockEditModal";
 import { ConditionBlockEditModal } from "@/components/blocks/ConditionBlockEditModal";
@@ -19,7 +21,7 @@ import { DelegationManagerModal } from "@/components/delegation/DelegationManage
 import { StrategySetupWizard } from "@/components/wizard/StrategySetupWizard";
 import { AuthRequiredModal } from "@/components/auth/AuthRequiredModal";
 import { AnimatePresence } from "framer-motion";
-import { Target } from "lucide-react";
+import { Target, Loader2 } from "lucide-react";
 
 const Index = () => {
   const canvasRef = useRef<CanvasHandle>(null);
@@ -36,6 +38,7 @@ const Index = () => {
     handleBlockDelete,
     handleBlockUpdate,
     createDemoStrategy,
+    loadTemplate,
     addBlock,
     resetCanvas,
     autoLayout,
@@ -54,10 +57,12 @@ const Index = () => {
   const { toast } = useToast();
 
   // Auth hook - for blocking canvas access until authenticated
-  const { isFullyAuthenticated } = useAuth();
+  const { isFullyAuthenticated, getBackendToken } = useAuth();
 
   // Control auth modal visibility with manual dismissal
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [loadingActiveStrategy, setLoadingActiveStrategy] = useState(false);
+  const hasAutoLoadedRef = useRef(false);
 
   useEffect(() => {
     // Show modal if we have a strategy and user is not authenticated
@@ -70,6 +75,77 @@ const Index = () => {
   const handleAuthComplete = () => {
     setShowAuthModal(false);
   };
+
+  // Reset auto-load tracking when user logs out or canvas is cleared
+  useEffect(() => {
+    if (!isFullyAuthenticated || !strategy || (strategy.blocks && strategy.blocks.length === 0)) {
+      hasAutoLoadedRef.current = false;
+    }
+  }, [isFullyAuthenticated, strategy]);
+
+  // Auto-load active strategy if user has delegation
+  useEffect(() => {
+    const loadActiveStrategy = async () => {
+      // Check if strategy has actual content blocks (not just empty canvas)
+      const hasContentBlocks = strategy && strategy.blocks && strategy.blocks.length > 0;
+
+      // Only load if:
+      // 1. User is authenticated
+      // 2. Active delegation exists with strategyId
+      // 3. No content blocks on canvas (empty canvas is ok)
+      // 4. Haven't already loaded this strategy
+      if (!isFullyAuthenticated || !activeDelegation?.strategyId || hasContentBlocks || hasAutoLoadedRef.current) {
+        return;
+      }
+
+      console.log('[Auto-load] Loading active strategy:', activeDelegation.strategyId);
+
+      try {
+        setLoadingActiveStrategy(true);
+        hasAutoLoadedRef.current = true;
+
+        const token = await getBackendToken();
+        if (!token) {
+          console.error('[Auto-load] No backend token available');
+          hasAutoLoadedRef.current = false;
+          return;
+        }
+
+        // Fetch strategy from backend
+        const strategyData = await strategiesApi.getStrategy(activeDelegation.strategyId, token);
+        console.log('[Auto-load] Strategy data fetched:', strategyData);
+
+        // Convert backend format to canvas format
+        const strategyLogic = (strategyData as any).strategyLogic;
+        if (strategyLogic) {
+          const canvasStrategy: Strategy = {
+            id: strategyLogic.id,
+            name: strategyLogic.name,
+            description: strategyLogic.description,
+            blocks: strategyLogic.blocks,
+            connections: strategyLogic.connections,
+            startBlockPosition: strategyLogic.startBlockPosition,
+            endBlockPosition: strategyLogic.endBlockPosition,
+            metadata: strategyLogic.metadata,
+          };
+
+          console.log('[Auto-load] Loading strategy onto canvas:', canvasStrategy.name);
+          // Load strategy onto canvas
+          setStrategy(canvasStrategy);
+        } else {
+          console.error('[Auto-load] No strategyLogic found in response');
+          hasAutoLoadedRef.current = false;
+        }
+      } catch (error) {
+        console.error('[Auto-load] Failed to load active strategy:', error);
+        hasAutoLoadedRef.current = false;
+      } finally {
+        setLoadingActiveStrategy(false);
+      }
+    };
+
+    loadActiveStrategy();
+  }, [isFullyAuthenticated, activeDelegation?.strategyId]);
 
   // Editing state for AssetBlockEditModal
   const [editingAssetBlock, setEditingAssetBlock] = useState<AssetBlock | null>(null);
@@ -414,6 +490,7 @@ const Index = () => {
               onBlockAdd={handleBlockAdd}
               onStrategyLoad={setStrategy}
               onStrategySave={handleStrategySave}
+              onTemplateLoad={loadTemplate}
               onReset={resetCanvas}
               onAutoLayout={handleAutoLayoutWithZoom}
               onUndo={handleUndo}
@@ -424,7 +501,10 @@ const Index = () => {
             />
 
             {/* Floating AI Chat Panel - also blocked when not authenticated */}
-            <FloatingChatPanel onStrategyGenerated={setStrategy} />
+            <FloatingChatPanel
+              onStrategyGenerated={setStrategy}
+              currentStrategy={strategy}
+            />
 
             {/* Floating Workflow Panel */}
             <FloatingWorkflowPanel strategy={strategy} />
@@ -438,6 +518,53 @@ const Index = () => {
               )}
             </AnimatePresence>
           </>
+        ) : loadingActiveStrategy ? (
+          <div className="flex flex-col h-full bg-white relative overflow-hidden">
+            {/* Grid background with diamond fade */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{
+                zIndex: 0,
+                maskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)',
+                maskComposite: 'intersect',
+                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%)',
+                WebkitMaskComposite: 'source-in'
+              }}
+            >
+              <defs>
+                <pattern
+                  id="landing-grid"
+                  width="30"
+                  height="30"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d="M 30 0 L 0 0 0 30"
+                    fill="none"
+                    stroke="rgba(226, 232, 240, 0.4)"
+                    strokeWidth="1"
+                  />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#landing-grid)" />
+            </svg>
+
+            {/* Logo Marquee at the top */}
+            <LogoMarquee />
+
+            {/* Loading State */}
+            <div className="flex-1 flex flex-col items-center justify-center relative" style={{ zIndex: 1 }}>
+              <div className="text-center max-w-lg px-6">
+                <Loader2 className="w-12 h-12 mx-auto mb-4 text-gray-900 animate-spin" />
+                <h2 className="text-2xl font-bold text-gray-900 mb-3">
+                  Loading Your Strategy
+                </h2>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  We're loading your active strategy onto the canvas...
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col h-full bg-white relative overflow-hidden">
             {/* Grid background with diamond fade */}
@@ -486,7 +613,7 @@ const Index = () => {
                   Use AI to generate strategies from natural language.
                 </p>
                 <Button
-                  onClick={createDemoStrategy}
+                  onClick={resetCanvas}
                   size="lg"
                   className="
                     rounded px-6 py-3 text-sm
@@ -496,7 +623,7 @@ const Index = () => {
                     transition-all duration-200
                   "
                 >
-                  Load Demo Strategy
+                  Getting Started
                 </Button>
               </div>
             </div>
