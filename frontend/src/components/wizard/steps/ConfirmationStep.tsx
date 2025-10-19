@@ -189,7 +189,7 @@ export function ConfirmationStep({
           size="lg"
           className="bg-gray-900 hover:bg-gray-800 px-8"
         >
-          Go to Strategy Dashboard
+          Manage Delegation
         </Button>
       </div>
 

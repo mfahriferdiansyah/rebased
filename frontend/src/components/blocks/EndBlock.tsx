@@ -66,8 +66,8 @@ export function EndBlock({
       </div>
 
       {/* Info */}
-      <div className="text-center py-2 bg-gray-50 rounded border border-gray-200">
-        <div className="text-xs font-medium text-gray-700">
+      <div className="text-center py-2 px-3 bg-gray-50 rounded border border-gray-200">
+        <div className="text-xs font-medium text-gray-700 truncate">
           Final Portfolio State
         </div>
       </div>

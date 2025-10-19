@@ -8,6 +8,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useDelegation } from "@/hooks/useDelegation";
 import { useStrategy } from "@/hooks/useStrategy";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { BlockType, Block, AssetBlock, ConditionBlock, ActionBlock } from "@/lib/types/blocks";
@@ -16,6 +17,8 @@ import { ConditionBlockEditModal } from "@/components/blocks/ConditionBlockEditM
 import { ActionBlockEditModal } from "@/components/blocks/ActionBlockEditModal";
 import { DelegationManagerModal } from "@/components/delegation/DelegationManagerModal";
 import { StrategySetupWizard } from "@/components/wizard/StrategySetupWizard";
+import { AuthRequiredModal } from "@/components/auth/AuthRequiredModal";
+import { AnimatePresence } from "framer-motion";
 import { Target } from "lucide-react";
 
 const Index = () => {
@@ -50,6 +53,24 @@ const Index = () => {
   const { saveStrategy, saving } = useStrategy();
   const { toast } = useToast();
 
+  // Auth hook - for blocking canvas access until authenticated
+  const { isFullyAuthenticated } = useAuth();
+
+  // Control auth modal visibility with manual dismissal
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  useEffect(() => {
+    // Show modal if we have a strategy and user is not authenticated
+    if (strategy && !isFullyAuthenticated) {
+      setShowAuthModal(true);
+    }
+  }, [strategy, isFullyAuthenticated]);
+
+  // Handle manual dismissal after authentication completes
+  const handleAuthComplete = () => {
+    setShowAuthModal(false);
+  };
+
   // Editing state for AssetBlockEditModal
   const [editingAssetBlock, setEditingAssetBlock] = useState<AssetBlock | null>(null);
   const [isAssetEditModalOpen, setIsAssetEditModalOpen] = useState(false);
@@ -67,6 +88,7 @@ const Index = () => {
 
   // Strategy setup wizard modal state
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+  const [wizardInitialStep, setWizardInitialStep] = useState<'smart-account' | 'manage'>('smart-account');
 
   // Handle block edit
   const handleBlockEdit = (block: Block) => {
@@ -313,7 +335,7 @@ const Index = () => {
 
       {/* Main Canvas Area */}
       <div
-        className="flex-1 relative"
+        className={`flex-1 relative ${showAuthModal ? 'pointer-events-none' : ''}`}
         style={{
           overscrollBehaviorX: 'none',
           overscrollBehaviorY: 'none',
@@ -339,8 +361,9 @@ const Index = () => {
               onBlockEdit={handleBlockEdit}
               activeDelegation={activeDelegation}
               onDelegationClick={async () => {
-                // Show wizard for first-time setup, or delegation modal for managing existing
+                // Show wizard for first-time setup or management
                 if (!activeDelegation) {
+                  // No delegation - start at step 1 (smart-account)
                   // Validate strategy before opening wizard
                   if (!strategy) {
                     toast({
@@ -374,10 +397,13 @@ const Index = () => {
                     return;
                   }
 
-                  // Open wizard directly (no save yet - deploy on-chain first)
+                  // Open wizard at step 1 (full setup)
+                  setWizardInitialStep('smart-account');
                   setIsSetupWizardOpen(true);
                 } else {
-                  setIsDelegationModalOpen(true);
+                  // Delegation exists - jump to step 6 (management)
+                  setWizardInitialStep('manage');
+                  setIsSetupWizardOpen(true);
                 }
               }}
             />
@@ -396,6 +422,21 @@ const Index = () => {
               canRedo={canRedo}
               isSaving={saving}
             />
+
+            {/* Floating AI Chat Panel - also blocked when not authenticated */}
+            <FloatingChatPanel onStrategyGenerated={setStrategy} />
+
+            {/* Floating Workflow Panel */}
+            <FloatingWorkflowPanel strategy={strategy} />
+
+            {/* Auth Required Modal - blocks canvas interaction until authenticated */}
+            <AnimatePresence mode="wait">
+              {showAuthModal && (
+                <div key="auth-modal" className="pointer-events-auto">
+                  <AuthRequiredModal onComplete={handleAuthComplete} />
+                </div>
+              )}
+            </AnimatePresence>
           </>
         ) : (
           <div className="flex flex-col h-full bg-white relative overflow-hidden">
@@ -462,12 +503,6 @@ const Index = () => {
           </div>
         )}
 
-        {/* Floating AI Chat Panel */}
-        <FloatingChatPanel onStrategyGenerated={setStrategy} />
-
-        {/* Floating Workflow Panel */}
-        <FloatingWorkflowPanel strategy={strategy} />
-
         {/* Asset Block Edit Modal */}
         <AssetBlockEditModal
           open={isAssetEditModalOpen}
@@ -502,8 +537,10 @@ const Index = () => {
         <StrategySetupWizard
           open={isSetupWizardOpen}
           onOpenChange={setIsSetupWizardOpen}
-          strategy={strategy!}
-          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || 10143}
+          strategy={strategy}
+          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || strategyChainId || 10143}
+          initialStep={wizardInitialStep}
+          initialDelegatorAddress={activeDelegation?.delegationData.delegator}
           onComplete={async () => {
             // Refresh delegations to show new delegation on START block
             await refreshDelegations();

@@ -76,3 +76,13 @@ export const chainById = {
 export function getChainById(chainId: number) {
   return chainById[chainId as keyof typeof chainById];
 }
+
+/**
+ * Get native currency symbol for a chain ID
+ * @param chainId - Chain ID (10143 = MON, 84532 = ETH, etc.)
+ * @returns Native currency symbol (e.g., 'MON', 'ETH')
+ */
+export function getNativeCurrencySymbol(chainId: number): string {
+  const chain = getChainById(chainId);
+  return chain?.nativeCurrency.symbol || 'ETH';
+}

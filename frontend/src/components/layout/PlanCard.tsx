@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { StrategyWithMetrics, statusConfig } from "@/lib/utils/mockStrategies";
-import { WorkflowVisualization } from "@/components/workflow/WorkflowVisualization";
+import { CanvasPreview } from "@/components/preview/CanvasPreview";
 import { Button } from "@/components/ui/button";
 import { Eye, TrendingUp, TrendingDown, ChevronDown, ChevronUp, FileEdit, Pause, Activity, Play, Trash2 } from "lucide-react";
 import { BlockType } from "@/lib/types/blocks";
@@ -128,16 +128,15 @@ export function PlanCard({ strategy, onDeploy, onStart, onStop, onDelete }: Plan
       {isExpanded && (
         <div className="border-t border-gray-300 bg-gray-50 max-h-[400px] overflow-y-auto">
           <div className="p-4 space-y-4">
-            {/* Workflow Preview */}
+            {/* Canvas Preview */}
             <div className="bg-white rounded-lg border border-gray-300 overflow-hidden">
-              <div className="h-40 relative overflow-hidden">
-                <div className="scale-[0.4] origin-top-left absolute -left-20 -top-10">
-                  <WorkflowVisualization
-                    blocks={strategy.blocks}
-                    connections={strategy.connections}
-                    className="pointer-events-none"
-                  />
-                </div>
+              <div className="h-64">
+                <CanvasPreview
+                  blocks={strategy.blocks}
+                  connections={strategy.connections}
+                  startBlockPos={strategy.startBlockPosition}
+                  endBlockPos={strategy.endBlockPosition}
+                />
               </div>
             </div>
 

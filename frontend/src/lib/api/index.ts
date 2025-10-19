@@ -8,3 +8,4 @@ export * from './auth';
 export * from './tokens';
 export * from './strategies';
 export * from './delegations';
+export * from './rebalances';

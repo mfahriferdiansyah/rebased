@@ -98,49 +98,50 @@ export function WalletInfo() {
         <Button
           variant="outline"
           size="sm"
-          className="gap-2 px-3"
+          className="gap-2 px-3 h-9 border-gray-300 bg-white hover:bg-gray-50 transition-colors"
         >
-          <Avatar className="h-6 w-6">
-            <AvatarFallback className="text-xs">
+          <Avatar className="h-5 w-5 bg-gray-900">
+            <AvatarFallback className="text-xs text-white bg-gray-900">
               {avatarLetter}
             </AvatarFallback>
           </Avatar>
-          <span className="text-sm font-medium">{displayName}</span>
-          <ChevronDown className="h-4 w-4 opacity-50" />
+          <span className="text-sm font-medium text-gray-900">{displayName}</span>
+          <ChevronDown className="h-3.5 w-3.5 text-gray-600" />
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-56 border-gray-300">
         {/* Wallet Address */}
-        <div className="px-2 py-2">
-          <div className="text-xs text-gray-500">Wallet Address</div>
-          <div className="text-xs font-mono mt-1">
+        <div className="px-3 py-2.5 bg-gray-50">
+          <div className="text-xs font-medium text-gray-600 mb-1">Wallet Address</div>
+          <div className="text-xs font-mono text-gray-900">
             {address.slice(0, 10)}...{address.slice(-8)}
           </div>
         </div>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="bg-gray-200" />
 
         {/* Copy Address */}
-        <DropdownMenuItem onClick={handleCopyAddress}>
-          <Copy className="mr-2 h-4 w-4" />
-          Copy Address
+        <DropdownMenuItem onClick={handleCopyAddress} className="text-gray-900 focus:bg-gray-100">
+          <Copy className="mr-2 h-4 w-4 text-gray-600" />
+          <span className="text-sm">Copy Address</span>
         </DropdownMenuItem>
 
         {/* Buy Crypto (Onramp) */}
         <DropdownMenuItem
           onClick={handleBuyCrypto}
           disabled={isOnrampLoading}
+          className="text-gray-900 focus:bg-gray-100"
         >
-          <CreditCard className="mr-2 h-4 w-4" />
-          {isOnrampLoading ? 'Opening...' : 'Buy Crypto'}
+          <CreditCard className="mr-2 h-4 w-4 text-gray-600" />
+          <span className="text-sm">{isOnrampLoading ? 'Opening...' : 'Buy Crypto'}</span>
         </DropdownMenuItem>
 
         {/* Export Wallet */}
         {wallet?.walletClientType === 'privy' && (
-          <DropdownMenuItem onClick={handleExportWallet}>
-            <Download className="mr-2 h-4 w-4" />
-            Export Wallet
+          <DropdownMenuItem onClick={handleExportWallet} className="text-gray-900 focus:bg-gray-100">
+            <Download className="mr-2 h-4 w-4 text-gray-600" />
+            <span className="text-sm">Export Wallet</span>
           </DropdownMenuItem>
         )}
 
@@ -152,17 +153,18 @@ export function WalletInfo() {
               '_blank'
             )
           }
+          className="text-gray-900 focus:bg-gray-100"
         >
-          <Wallet className="mr-2 h-4 w-4" />
-          View on Explorer
+          <Wallet className="mr-2 h-4 w-4 text-gray-600" />
+          <span className="text-sm">View on Explorer</span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="bg-gray-200" />
 
         {/* Sign Out */}
-        <DropdownMenuItem onClick={logout} className="text-red-600">
+        <DropdownMenuItem onClick={logout} className="text-orange-600 focus:bg-orange-50 focus:text-orange-700">
           <LogOut className="mr-2 h-4 w-4" />
-          Sign Out
+          <span className="text-sm">Sign Out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -45,26 +45,35 @@ export function NetworkSwitcher() {
     );
   };
 
+  // Get short name
+  const getShortName = (name: string | undefined) => {
+    if (!name) return 'Network';
+    // Remove "Testnet" and "Sepolia" for compact display
+    return name.replace(' Testnet', '').replace(' Sepolia', '');
+  };
+
   return (
     <Select
       value={chainId?.toString()}
       onValueChange={handleChainSwitch}
       disabled={isPending}
     >
-      <SelectTrigger className="w-40 h-9">
+      <SelectTrigger className="h-9 border-gray-300 bg-white hover:bg-gray-50 transition-colors">
         <SelectValue>
           {isPending ? (
-            'Switching...'
+            <span className="text-sm text-gray-600">Switching...</span>
           ) : (
             <div className="flex items-center gap-2">
               {chainId && (
                 <img
                   src={getChainLogoUrl(chainId)}
                   alt={currentChain?.name || 'Network'}
-                  className="w-4 h-4 rounded-full"
+                  className="w-4 h-4 rounded-full flex-shrink-0"
                 />
               )}
-              <span className="text-sm">{currentChain?.name || 'Select Network'}</span>
+              <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+                {getShortName(currentChain?.name)}
+              </span>
             </div>
           )}
         </SelectValue>
@@ -78,7 +87,7 @@ export function NetworkSwitcher() {
               alt="Monad Testnet"
               className="w-4 h-4 rounded-full"
             />
-            <span>Monad Testnet</span>
+            <span className="text-sm">Monad Testnet</span>
           </div>
         </SelectItem>
 
@@ -89,7 +98,7 @@ export function NetworkSwitcher() {
               alt="Base Sepolia"
               className="w-4 h-4 rounded-full"
             />
-            <span>Base Sepolia</span>
+            <span className="text-sm">Base Sepolia</span>
           </div>
         </SelectItem>
       </SelectContent>
