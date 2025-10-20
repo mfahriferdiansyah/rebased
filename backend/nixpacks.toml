@@ -2,10 +2,15 @@
 nixPkgs = ["nodejs_18", "openssl"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = [
+  "npm ci --include=dev"
+]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = [
+  "npx prisma generate --schema=libs/database/src/schema.prisma",
+  "npx nest build"
+]
 
 [start]
 cmd = "npm run ${START_SCRIPT:-start:prod}"
