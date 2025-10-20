@@ -13,4 +13,4 @@ cmds = [
 ]
 
 [start]
-cmd = "npm run ${START_SCRIPT:-start:prod}"
+cmd = "sh -c 'npm run ${START_SCRIPT:-start:prod}'"
