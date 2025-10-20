@@ -249,13 +249,13 @@ rebased/
 
 ### Delegation Security
 
-- ERC-7710 standard delegation
-- Fine-grained caveats (target, method, time, call limits)
+- ERC-4473 standard delegation
+- Fine-grained caveats (target, method, time, call limits) [Not implemented yet]
 - MetaMask framework v1.3.0 (audited)
 
 ### Smart Contract Security
 
-- UUPS upgradeable proxies (5 contracts)
+- UUPS upgradeable proxies (5 contracts) for development purposes
 - Owner-controlled upgrades
 - Slippage protection
 - Price staleness checks
@@ -329,4 +329,4 @@ npm run build  # Test build
 
 ---
 
-**Built with MetaMask DeleGator | Powered by Pyth Oracle | Secured by ERC-7710**
+**Built with MetaMask DeleGator | Powered by Pyth Oracle | Secured by ERC-4473**
