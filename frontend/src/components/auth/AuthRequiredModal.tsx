@@ -269,6 +269,9 @@ export function AuthRequiredModal({ onComplete }: AuthRequiredModalProps) {
 
                   <p className="text-xs text-gray-500 text-center">
                     Step 2: Sign message to verify ownership
+                   <p className="text-xs text-red-500 text-center">
+                    Please refresh if got stuck here.
+                  </p>
                   </p>
                 </motion.div>
               ) : showCompletion ? (

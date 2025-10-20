@@ -71,9 +71,24 @@ export class ActionPlannerService {
     const estimatedGas =
       BigInt(swaps.length * 150000 + transfers.length * 50000);
 
-    // Determine if we should execute
-    const shouldExecute = conditionsMet && (swaps.length > 0 || transfers.length > 0);
-    const reason = this.getExecutionReason(conditionsMet, swaps, transfers);
+    // Separate rebalance swaps from conditional actions
+    // Rebalance = portfolio maintenance (always execute)
+    // Transfers/Swaps = tactical actions (require conditions)
+    const hasRebalanceSwaps = swaps.some((s) => s.reason === 'rebalance');
+    const hasConditionalActions =
+      swaps.some((s) => s.reason === 'swap_action') || transfers.length > 0;
+
+    // Rebalance always executes (portfolio maintenance)
+    // Other actions require conditions to be met
+    const shouldExecute =
+      hasRebalanceSwaps || (conditionsMet && hasConditionalActions);
+
+    const reason = this.getExecutionReason(
+      conditionsMet,
+      swaps,
+      transfers,
+      hasRebalanceSwaps,
+    );
 
     return {
       swaps,
@@ -277,7 +292,14 @@ export class ActionPlannerService {
     conditionsMet: boolean,
     swaps: SwapPlan[],
     transfers: ExecutionPlan['transfers'],
+    hasRebalanceSwaps: boolean,
   ): string {
+    // Special case: Rebalance executing even though conditions not met
+    if (hasRebalanceSwaps && !conditionsMet) {
+      const rebalanceCount = swaps.filter((s) => s.reason === 'rebalance').length;
+      return `Executing ${rebalanceCount} rebalance swap(s) (conditions not met, other actions skipped)`;
+    }
+
     if (!conditionsMet) {
       return 'Conditions not met';
     }

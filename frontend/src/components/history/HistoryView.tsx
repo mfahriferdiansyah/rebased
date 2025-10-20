@@ -236,9 +236,9 @@ export function HistoryView() {
                     </div>
 
                     {rebalance.driftAfter && (
-                      <div className="bg-green-50 rounded p-2 border border-green-200">
-                        <div className="text-xs text-green-700 mb-0.5">Drift After</div>
-                        <div className="text-sm font-semibold text-green-900">
+                      <div className="bg-gray-50 rounded p-2 border border-gray-200">
+                        <div className="text-xs text-gray-700 mb-0.5">Drift After</div>
+                        <div className="text-sm font-semibold text-gray-900">
                           {(parseInt(rebalance.driftAfter) / 100).toFixed(2)}%
                         </div>
                       </div>

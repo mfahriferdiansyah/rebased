@@ -220,7 +220,20 @@ export function useDelegation(chainId?: number) {
         }
 
         // 3. Create viem WalletClient from Privy wallet (AFTER switching)
-        const provider = await privyWallet.getEthereumProvider(); // Fresh provider after switch
+        // CRITICAL FIX: Ensure provider is fresh and ready (handle stale state on page reload)
+        let provider;
+        try {
+          provider = await privyWallet.getEthereumProvider();
+
+          // Validate provider is actually ready (not stale)
+          if (!provider || !provider.request) {
+            throw new Error('Provider not ready - please reconnect your wallet');
+          }
+        } catch (providerError: any) {
+          console.error('Failed to get provider:', providerError);
+          throw new Error('Wallet provider not ready. Please disconnect and reconnect your wallet.');
+        }
+
         const chain = getChainById(selectedChainId);
 
         if (!chain) {
@@ -240,19 +253,34 @@ export function useDelegation(chainId?: number) {
         console.log('  - wallets[0].address:', wallets[0]?.address);
         console.log('  - Chain:', selectedChainId);
         console.log('  - DelegationData.delegator:', delegationData.delegator);
+        console.log('  - Provider ready:', !!provider);
 
-        // 4. Sign delegation with EIP-712
+        // 4. Sign delegation with EIP-712 (with timeout protection)
         toast({
           title: 'Signature required',
           description: 'Please sign the delegation in your wallet',
         });
 
-        const signature = await signDelegation(
+        // Wrap signing with timeout to detect hanging signatures
+        const SIGNATURE_TIMEOUT = 120000; // 2 minutes (MetaMask can be slow)
+
+        const signaturePromise = signDelegation(
           viemWalletClient,
           userAddress,
           delegationData,
           selectedChainId
         );
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(
+              'Signature timeout. The wallet may be in a stale state. ' +
+              'Please disconnect and reconnect your wallet, then try again.'
+            ));
+          }, SIGNATURE_TIMEOUT);
+        });
+
+        const signature = await Promise.race([signaturePromise, timeoutPromise]);
 
         // DEBUG: Log signature
         console.log('✅ Signature created:', signature);
@@ -301,6 +329,18 @@ export function useDelegation(chainId?: number) {
           toast({
             title: 'Signature cancelled',
             description: 'You cancelled the delegation signature',
+          });
+        } else if (error.message?.includes('timeout') || error.message?.includes('stale state')) {
+          toast({
+            title: 'Wallet connection issue',
+            description: 'Please disconnect and reconnect your wallet, then try again.',
+            variant: 'destructive',
+          });
+        } else if (error.message?.includes('Provider not ready') || error.message?.includes('reconnect')) {
+          toast({
+            title: 'Wallet not ready',
+            description: 'Please disconnect and reconnect your wallet.',
+            variant: 'destructive',
           });
         } else if (error.message?.includes('Invalid or expired token') || error.message?.includes('401')) {
           toast({

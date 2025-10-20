@@ -191,8 +191,15 @@ export function useSmartAccount() {
       setStatus(prev => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        // Create MetaMask smart account using Delegation Toolkit
-        const smartAccount = await toMetaMaskSmartAccount({
+        // CRITICAL FIX: Validate wallet client is ready (handle stale state on page reload)
+        if (!walletClient.account) {
+          throw new Error('Wallet not ready. Please disconnect and reconnect your wallet.');
+        }
+
+        // Create MetaMask smart account using Delegation Toolkit with timeout protection
+        const ACCOUNT_CREATION_TIMEOUT = 120000; // 2 minutes
+
+        const accountPromise = toMetaMaskSmartAccount({
           client: publicClient,
           implementation: Implementation.Hybrid,
           deployParams: [ownerAddress, [], [], []],
@@ -200,7 +207,75 @@ export function useSmartAccount() {
           signer: { walletClient },
         });
 
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(
+              'Smart account creation timeout. The wallet may be in a stale state. ' +
+              'Please disconnect and reconnect your wallet, then try again.'
+            ));
+          }, ACCOUNT_CREATION_TIMEOUT);
+        });
+
+        const smartAccount = await Promise.race([accountPromise, timeoutPromise]);
+
         const delegatorAddress = smartAccount.address;
+
+        // CRITICAL FIX: Check if smart account is already deployed on-chain
+        // toMetaMaskSmartAccount() returns a deterministic address (counterfactual)
+        // but does NOT deploy the contract. We must deploy it explicitly.
+        console.log('🔍 Checking if smart account is deployed at:', delegatorAddress);
+        const code = await publicClient.getBytecode({ address: delegatorAddress });
+        const isDeployed = code !== undefined && code !== '0x';
+
+        if (!isDeployed) {
+          // Deploy the smart account on-chain using factory pattern
+          // Per MetaMask docs: https://docs.metamask.io/delegation-toolkit/guides/smart-accounts/deploy-smart-account/
+          console.log('🚀 Deploying smart account to blockchain...');
+          console.log('   This will prompt you to sign a deployment transaction.');
+
+          try {
+            // Get factory deployment parameters
+            // factory = SimpleFactory contract address
+            // factoryData = encoded deployment calldata
+            const { factory, factoryData } = await smartAccount.getFactoryArgs();
+
+            console.log('   Factory:', factory);
+            console.log('   Deploying to:', delegatorAddress);
+
+            // Send deployment transaction to factory
+            const deployTx = await walletClient.sendTransaction({
+              to: factory,
+              data: factoryData,
+            });
+
+            console.log('📤 Deployment transaction sent:', deployTx);
+
+            // Wait for deployment confirmation
+            console.log('⏳ Waiting for deployment confirmation...');
+            const receipt = await publicClient.waitForTransactionReceipt({
+              hash: deployTx,
+            });
+
+            if (receipt.status !== 'success') {
+              throw new Error('Smart account deployment transaction failed');
+            }
+
+            console.log('✅ Smart account successfully deployed!');
+            console.log('   Address:', delegatorAddress);
+            console.log('   Transaction:', deployTx);
+          } catch (deployError: any) {
+            console.error('❌ Deployment failed:', deployError);
+
+            // Check if user rejected the transaction
+            if (deployError.code === 4001 || deployError.message?.includes('User rejected')) {
+              throw new Error('Deployment cancelled: You must sign the deployment transaction to create your smart account');
+            }
+
+            throw new Error(`Failed to deploy smart account: ${deployError.message || 'Unknown error'}`);
+          }
+        } else {
+          console.log('✅ Smart account already deployed at:', delegatorAddress);
+        }
 
         // Cache DeleGator address in localStorage
         const storageKey = `delegator_${ownerAddress.toLowerCase()}`;

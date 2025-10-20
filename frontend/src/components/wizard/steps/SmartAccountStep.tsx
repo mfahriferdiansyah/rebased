@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,8 @@ import {
   ArrowRight,
   Loader2,
   Info,
+  X,
+  RotateCcw,
 } from 'lucide-react';
 import { useSmartAccount } from '@/hooks/useSmartAccount';
 import { useAccount } from 'wagmi';
@@ -38,6 +40,19 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
   const [checking, setChecking] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  /**
+   * Cleanup on unmount - abort any pending operations
+   */
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   /**
    * Check DeleGator status on mount
@@ -64,6 +79,25 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
   }, [userAddress, checkDeleGatorStatus]);
 
   /**
+   * Cancel ongoing operation
+   */
+  const handleCancelOperation = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setCreating(false);
+    setError('Operation cancelled. You can retry when ready.');
+  };
+
+  /**
+   * Reset error state for retry
+   */
+  const handleRetry = () => {
+    setError(null);
+  };
+
+  /**
    * Handle DeleGator creation
    */
   const handleCreateDeleGator = async () => {
@@ -76,7 +110,15 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       setCreating(true);
       setError(null);
 
+      // Create new AbortController for this operation
+      abortControllerRef.current = new AbortController();
+
       const delegatorAddress = await createDeleGator(userAddress);
+
+      // Check if operation was aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        return;
+      }
 
       // Verify creation was successful
       await checkDeleGatorStatus(userAddress);
@@ -86,9 +128,14 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
         onNext(delegatorAddress);
       }
     } catch (err: any) {
+      // Don't show error if user manually cancelled
+      if (err.name === 'AbortError' || err.message?.includes('cancelled')) {
+        return;
+      }
       setError(err.message || 'Failed to create smart account');
     } finally {
       setCreating(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -272,7 +319,32 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="w-4 h-4" />
-          <AlertDescription className="text-sm">{error}</AlertDescription>
+          <AlertDescription className="text-sm">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Loading state with cancel option */}
+      {creating && (
+        <Alert>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <AlertDescription className="text-sm">
+            <div className="flex items-center justify-between">
+              <span>Creating smart account... This may take a moment.</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelOperation}
+                className="h-auto p-1 hover:bg-transparent"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-gray-600 mt-2">
+              If the wallet popup doesn't appear, try clicking Cancel and retry.
+            </p>
+          </AlertDescription>
         </Alert>
       )}
 
@@ -284,23 +356,38 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
         >
           Cancel
         </Button>
-        <Button
-          onClick={handleCreateDeleGator}
-          disabled={creating}
-          className="bg-gray-900 hover:bg-gray-800"
-        >
-          {creating ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Creating Smart Account...
-            </>
-          ) : (
-            <>
-              Create Smart Account
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </>
+
+        <div className="flex gap-2">
+          {/* Retry button appears after error */}
+          {error && !creating && (
+            <Button
+              variant="outline"
+              onClick={handleRetry}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Clear Error
+            </Button>
           )}
-        </Button>
+
+          <Button
+            onClick={handleCreateDeleGator}
+            disabled={creating}
+            className="bg-gray-900 hover:bg-gray-800"
+          >
+            {creating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                {error ? 'Retry' : 'Create Smart Account'}
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
