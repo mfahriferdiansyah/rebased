@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -9,6 +9,8 @@ import {
   Loader2,
   Info,
   Shield,
+  X,
+  RotateCcw,
 } from 'lucide-react';
 import { useDelegation } from '@/hooks/useDelegation';
 import { getBotExecutorAddress } from '@/lib/utils/delegation-signatures';
@@ -48,11 +50,43 @@ export function DelegationStep({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [delegationCreated, setDelegationCreated] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  /**
+   * Cleanup on unmount - abort any pending operations
+   */
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   // Check if delegation already exists
   const existingDelegation = delegations.find(
     d => d.userAddress.toLowerCase() === delegatorAddress.toLowerCase() && d.isActive
   );
+
+  /**
+   * Cancel ongoing operation
+   */
+  const handleCancelOperation = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setCreating(false);
+    setError('Operation cancelled. You can retry when ready.');
+  };
+
+  /**
+   * Reset error state for retry
+   */
+  const handleRetry = () => {
+    setError(null);
+  };
 
   /**
    * Handle delegation creation
@@ -61,6 +95,9 @@ export function DelegationStep({
     try {
       setCreating(true);
       setError(null);
+
+      // Create new AbortController for this operation
+      abortControllerRef.current = new AbortController();
 
       // Get bot executor address from environment configuration
       const botAddress = getBotExecutorAddress(chainId);
@@ -72,6 +109,11 @@ export function DelegationStep({
         delegatorAddress // Pass DeleGator smart account address
       );
 
+      // Check if operation was aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        return;
+      }
+
       if (delegation) {
         setDelegationCreated(true);
         // Auto-advance after brief delay
@@ -82,10 +124,15 @@ export function DelegationStep({
         throw new Error('Delegation creation returned null');
       }
     } catch (err: any) {
+      // Don't show error if user manually cancelled
+      if (err.name === 'AbortError' || err.message?.includes('cancelled')) {
+        return;
+      }
       console.error('Failed to create delegation:', err);
       setError(err.message || 'Failed to create delegation');
     } finally {
       setCreating(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -251,7 +298,32 @@ export function DelegationStep({
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="w-4 h-4" />
-          <AlertDescription className="text-sm">{error}</AlertDescription>
+          <AlertDescription className="text-sm">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Loading state with cancel option */}
+      {creating && (
+        <Alert>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <AlertDescription className="text-sm">
+            <div className="flex items-center justify-between">
+              <span>Creating delegation... Waiting for signature.</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelOperation}
+                className="h-auto p-1 hover:bg-transparent"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-gray-600 mt-2">
+              If the wallet popup doesn't appear, try clicking Cancel and retry.
+            </p>
+          </AlertDescription>
         </Alert>
       )}
 
@@ -273,23 +345,38 @@ export function DelegationStep({
             Cancel
           </Button>
         </div>
-        <Button
-          onClick={handleCreateDelegation}
-          disabled={creating || delegationsLoading}
-          className="bg-gray-900 hover:bg-gray-800"
-        >
-          {creating ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Creating Delegation...
-            </>
-          ) : (
-            <>
-              Create Delegation
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </>
+
+        <div className="flex gap-2">
+          {/* Retry button appears after error */}
+          {error && !creating && (
+            <Button
+              variant="outline"
+              onClick={handleRetry}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Clear Error
+            </Button>
           )}
-        </Button>
+
+          <Button
+            onClick={handleCreateDelegation}
+            disabled={creating || delegationsLoading}
+            className="bg-gray-900 hover:bg-gray-800"
+          >
+            {creating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                {error ? 'Retry' : 'Create Delegation'}
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

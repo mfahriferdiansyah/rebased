@@ -266,6 +266,29 @@ export class ExecutorProcessor {
         const gasCost = receipt.gasUsed * receipt.effectiveGasPrice;
         const botAddress = walletClient.account.address;
 
+        // Calculate drift AFTER rebalance execution
+        this.logger.log('Calculating driftAfter by re-analyzing portfolio...');
+        let driftAfter = BigInt(drift); // Default to original drift if re-analysis fails
+
+        try {
+          // Re-evaluate portfolio state after swaps executed
+          const evaluationAfter = await this.strategyEngine.evaluateStrategy(
+            strategy.strategyLogic,
+            strategy,
+          );
+
+          if (evaluationAfter && evaluationAfter.portfolioState) {
+            driftAfter = BigInt(evaluationAfter.portfolioState.drift);
+            this.logger.log(
+              `Drift reduced: ${drift / 100}% → ${Number(driftAfter) / 100}% (${((drift - Number(driftAfter)) / drift * 100).toFixed(1)}% improvement)`,
+            );
+          } else {
+            this.logger.warn('Failed to re-evaluate portfolio, using original drift as driftAfter');
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to calculate driftAfter: ${error.message}, using original drift`);
+        }
+
         await this.prisma.rebalance.create({
           data: {
             strategyId,
@@ -273,6 +296,7 @@ export class ExecutorProcessor {
             txHash,
             userAddress,
             drift: BigInt(drift),
+            driftAfter,
             gasUsed: receipt.gasUsed,
             gasPrice: receipt.effectiveGasPrice,
             gasCost,
@@ -288,6 +312,7 @@ export class ExecutorProcessor {
           strategyId,
           txHash,
           drift: drift / 100,
+          driftAfter: Number(driftAfter) / 100,
           gasUsed: receipt.gasUsed.toString(),
           timestamp: new Date().toISOString(),
         });
@@ -340,6 +365,9 @@ export class ExecutorProcessor {
       // Format: failed-{timestamp}-{random}
       const failedTxHash = `failed-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
+      // For failed rebalances, driftAfter = drift (portfolio unchanged)
+      const driftAfter = BigInt(drift);
+
       await this.prisma.rebalance.create({
         data: {
           strategyId,
@@ -347,6 +375,7 @@ export class ExecutorProcessor {
           txHash: failedTxHash,
           userAddress,
           drift: BigInt(drift),
+          driftAfter,
           gasUsed: 0n,
           gasPrice: 0n,
           gasCost: 0n,

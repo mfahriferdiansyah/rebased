@@ -3,9 +3,9 @@ import { motion } from "framer-motion";
 // Easy to add new logos - just add a new object to this array!
 // Place logo images in public/logo-marquee/ directory
 const PARTNER_LOGOS = [
-  { name: "Chainlink", filename: "chainlink.png" },
+  { name: "Metamask", filename: "metamask.png" },
   { name: "Farcaster", filename: "farcaster.png" },
-  { name: "Frax", filename: "frax.png" },
+  { name: "Pyth", filename: "pyth.png" },
   { name: "Uniswap", filename: "uniswap.png" },
 ];
 
