@@ -226,7 +226,6 @@ rebased/
 
 ## Supported Chains
 
-- **Base Sepolia** (Testnet)
 - **Monad Testnet**
 - More coming soon
 
