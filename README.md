@@ -37,6 +37,7 @@ IF ETH_price < $2,000 THEN swap 50% USDC for ETH
 ```
 STRATEGY: 70% ETH, 30% USDC
 IF drift > 5% THEN rebalance to target
+This will create automatic rebalancing make the portofolio to Always take profit, Always buy the dip.
 ```
 
 **Buy the Dip** - Accumulate when price drops
