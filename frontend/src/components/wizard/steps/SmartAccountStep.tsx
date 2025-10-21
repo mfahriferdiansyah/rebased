@@ -11,9 +11,13 @@ import {
   Info,
   X,
   RotateCcw,
+  Network,
 } from 'lucide-react';
 import { useSmartAccount } from '@/hooks/useSmartAccount';
-import { useAccount } from 'wagmi';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useWalletClient } from 'wagmi';
+import { monadTestnet } from '@/lib/chains';
+import { toast } from 'sonner';
 import type { Address } from 'viem';
 
 interface SmartAccountStepProps {
@@ -30,7 +34,9 @@ interface SmartAccountStepProps {
  * - Proceeds to next step once DeleGator is confirmed
  */
 export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
-  const { address: userAddress } = useAccount();
+  const { authenticated, ready: privyReady } = usePrivy();
+  const { wallets } = useWallets();
+  const { data: wagmiWalletClient } = useWalletClient(); // For checking if wagmi client is ready
   const {
     status,
     checkDeleGatorStatus,
@@ -40,7 +46,87 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
   const [checking, setChecking] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSwitching, setIsSwitching] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const networkSwitchTriggeredRef = useRef(false);
+
+  // Get wallet and address from Privy (works on ANY network)
+  const wallet = wallets[0];
+  const userAddress = wallet?.address as Address | undefined;
+
+  // Get chain ID from Privy wallet (works on ANY network)
+  const walletChainId = wallet?.chainId;
+  const chainIdNumber = walletChainId?.includes(':')
+    ? parseInt(walletChainId.split(':')[1])
+    : walletChainId ? parseInt(walletChainId) : undefined;
+
+  // Network validation
+  const isOnWrongNetwork = privyReady && authenticated && wallet && chainIdNumber !== monadTestnet.id;
+
+  /**
+   * Handle network switch to Monad testnet using Privy's wallet.switchChain()
+   */
+  const handleNetworkSwitch = async () => {
+    if (!wallet) {
+      console.error('No wallet available for network switch');
+      return;
+    }
+
+    try {
+      setIsSwitching(true);
+      console.log('🔄 Switching network using Privy wallet.switchChain()...');
+
+      // Use Privy's native wallet.switchChain() method
+      await wallet.switchChain(monadTestnet.id);
+
+      toast.success('Network switched', {
+        description: `Switched to ${monadTestnet.name}`,
+      });
+
+      // Reset flag on successful switch
+      networkSwitchTriggeredRef.current = false;
+      console.log('✅ Network switched successfully');
+
+      // Wait for wagmi to sync with the new network
+      console.log('⏳ Waiting for wagmi to sync with new network...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('✅ Wagmi sync delay complete');
+    } catch (error: any) {
+      console.error('Failed to switch network:', error);
+
+      // Only show error toast if not a user rejection
+      if (!error.message?.includes('User rejected') && !error.message?.includes('rejected') && !error.message?.includes('User denied')) {
+        toast.error('Network switch failed', {
+          description: error.message || 'Please switch to Monad Testnet manually in your wallet',
+        });
+      }
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
+  /**
+   * Reset network switch flag when user successfully switches to correct network
+   * This allows re-triggering if user switches back to wrong network
+   */
+  useEffect(() => {
+    if (!isOnWrongNetwork && networkSwitchTriggeredRef.current) {
+      console.log('✅ [SmartAccountStep] User on correct network - resetting switch flag');
+      networkSwitchTriggeredRef.current = false;
+    }
+  }, [isOnWrongNetwork]);
+
+  /**
+   * Auto-trigger network switch when wizard opens on wrong network
+   * Triggers whenever network becomes wrong (not just once per mount)
+   */
+  useEffect(() => {
+    if (isOnWrongNetwork && !isSwitching && !networkSwitchTriggeredRef.current) {
+      console.log('🔄 [SmartAccountStep] Auto-triggering network switch to Monad Testnet...');
+      networkSwitchTriggeredRef.current = true;
+      handleNetworkSwitch();
+    }
+  }, [isOnWrongNetwork, isSwitching, handleNetworkSwitch]);
 
   /**
    * Cleanup on unmount - abort any pending operations
@@ -101,10 +187,26 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
    * Handle DeleGator creation
    */
   const handleCreateDeleGator = async () => {
+    // Check network FIRST before any operation
+    if (isOnWrongNetwork) {
+      console.warn('⚠️ Wrong network detected - triggering switch before operation');
+      await handleNetworkSwitch();
+      return;
+    }
+
     if (!userAddress) {
       setError('Please connect your wallet first');
       return;
     }
+
+    // Check if wagmi wallet client is ready
+    if (!wagmiWalletClient?.account) {
+      console.error('❌ Wagmi wallet client not ready');
+      setError('Wallet connection is not ready. Please wait a moment and try again, or disconnect and reconnect your wallet.');
+      return;
+    }
+
+    console.log('✅ Wagmi wallet client ready:', wagmiWalletClient.account.address);
 
     try {
       setCreating(true);
@@ -132,7 +234,15 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       if (err.name === 'AbortError' || err.message?.includes('cancelled')) {
         return;
       }
-      setError(err.message || 'Failed to create smart account');
+
+      // Better error message for wallet connection issues
+      let errorMessage = err.message || 'Failed to create smart account';
+      if (errorMessage.includes('Wallet not connected')) {
+        errorMessage = 'Wallet client connection lost. Please disconnect and reconnect your wallet, then try again.';
+      }
+
+      console.error('❌ DeleGator creation failed:', errorMessage);
+      setError(errorMessage);
     } finally {
       setCreating(false);
       abortControllerRef.current = null;
@@ -149,6 +259,77 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       setError('No DeleGator address found');
     }
   };
+
+  // Wrong network - prompt to switch
+  if (isOnWrongNetwork) {
+    return (
+      <div className="space-y-4">
+        <div className="border rounded-lg p-6 bg-orange-50 border-orange-200">
+          <div className="flex items-start gap-3">
+            <Network className="w-6 h-6 text-orange-600 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-orange-900">Wrong Network</h3>
+              <p className="text-sm text-orange-700 mt-1">
+                Please switch to Monad Testnet to continue with smart account setup.
+              </p>
+
+              <div className="mt-4 space-y-2 text-sm text-orange-800">
+                <div className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
+                  <span>Required Network: <strong>Monad Testnet</strong></span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
+                  <span>Required Chain ID: <strong>{monadTestnet.id}</strong></span>
+                </div>
+                {chainIdNumber && (
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
+                    <span>Your Current Chain ID: <strong>{chainIdNumber}</strong></span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <Alert>
+          <Info className="w-4 h-4" />
+          <AlertDescription className="text-sm">
+            Click the button below to switch your wallet to Monad Testnet.
+            Your wallet will prompt you to approve the network switch.
+          </AlertDescription>
+        </Alert>
+
+        <div className="flex justify-between gap-2 pt-4">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isSwitching}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleNetworkSwitch}
+            disabled={isSwitching}
+            className="bg-gray-900 hover:bg-gray-800"
+          >
+            {isSwitching ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Switching...
+              </>
+            ) : (
+              <>
+                <Network className="w-4 h-4 mr-2" />
+                Switch to Monad Testnet
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Wallet not connected
   if (!userAddress) {
@@ -363,13 +544,18 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
 
           <Button
             onClick={handleCreateDeleGator}
-            disabled={creating}
+            disabled={creating || !wagmiWalletClient?.account}
             className="bg-gray-900 hover:bg-gray-800"
           >
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Creating...
+              </>
+            ) : !wagmiWalletClient?.account ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Connecting...
               </>
             ) : (
               <>

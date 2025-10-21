@@ -3,6 +3,8 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { SiweMessage } from 'siwe';
 import { authApi } from '@/lib/api/auth';
 import { useToast } from '@/hooks/use-toast';
+import { monadTestnet } from '@/lib/chains';
+import { toast as sonnerToast } from 'sonner';
 
 /**
  * Auth Context - Single Source of Truth for Authentication
@@ -79,6 +81,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const MAX_ATTEMPTS = 3;
   const COOLDOWN_MS = 3000;
 
+  // Network switching state
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
+  const networkSwitchAttemptedRef = useRef(false);
+
   const wallet = wallets[0];
   const userAddress = wallet?.address as `0x${string}` | undefined;
 
@@ -90,6 +96,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Check if token expires in more than 5 minutes
     return Date.now() < tokenExpiry - 300000;
   }, [backendToken, tokenExpiry]);
+
+  /**
+   * Switch wallet to Monad testnet
+   * Uses Privy's native wallet.switchChain() method
+   */
+  const switchToMonadTestnet = useCallback(async (): Promise<boolean> => {
+    if (!wallet) {
+      console.warn('⚠️ No wallet available for network switch');
+      return false;
+    }
+
+    try {
+      console.log('🔄 Switching to Monad Testnet...');
+      setIsSwitchingNetwork(true);
+
+      // Use Privy's wallet.switchChain method
+      await wallet.switchChain(monadTestnet.id);
+
+      console.log('✅ Successfully switched to Monad Testnet');
+      sonnerToast.success('Network switched', {
+        description: `Connected to ${monadTestnet.name}`,
+      });
+
+      return true;
+    } catch (error: any) {
+      console.error('❌ Failed to switch network:', error);
+
+      // Only show error if user didn't cancel
+      if (!error.message?.includes('User rejected') && !error.message?.includes('cancelled')) {
+        sonnerToast.error('Network switch required', {
+          description: `Please switch to ${monadTestnet.name} manually in your wallet`,
+        });
+      }
+
+      return false;
+    } finally {
+      setIsSwitchingNetwork(false);
+    }
+  }, [wallet]);
 
   /**
    * Get valid backend JWT token
@@ -278,6 +323,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setTokenExpiry(0);
     siweCompletedRef.current = false;
     autoRetryAttemptedRef.current = false;
+    networkSwitchAttemptedRef.current = false; // Reset network switch flag
     attemptCount.current = 0;
     lastAttemptTime.current = 0;
 
@@ -296,12 +342,56 @@ export function AuthProvider({ children }: AuthProviderProps) {
     siweCompletedRef.current = false;
     autoRetryAttemptedRef.current = false;
     siweInProgressRef.current = false;
+    networkSwitchAttemptedRef.current = false; // Allow network switch retry
     console.log('🔄 Auto-retry flags reset for manual retry');
   }, []);
 
   /**
+   * Effect: Auto-switch to Monad testnet after Privy authentication
+   * This ensures wallet is on correct network BEFORE SIWE flow
+   */
+  useEffect(() => {
+    const checkAndSwitchNetwork = async () => {
+      // Only proceed if authenticated via Privy and have wallet
+      if (!authenticated || !ready || !wallet || networkSwitchAttemptedRef.current) {
+        return;
+      }
+
+      // Check wallet's current chain
+      const walletChainId = wallet.chainId;
+      console.log('🔍 Checking wallet network:', { walletChainId, required: monadTestnet.id });
+
+      // Extract numeric chain ID from Privy's format (e.g., "eip155:10143" -> 10143)
+      const numericChainId = walletChainId?.includes(':')
+        ? parseInt(walletChainId.split(':')[1])
+        : parseInt(walletChainId);
+
+      // If already on Monad testnet, skip
+      if (numericChainId === monadTestnet.id) {
+        console.log('✅ Already on Monad Testnet');
+        networkSwitchAttemptedRef.current = true;
+        return;
+      }
+
+      // Mark as attempted to prevent loops
+      networkSwitchAttemptedRef.current = true;
+
+      // Attempt to switch network
+      console.log('⚠️ Wrong network detected. Auto-switching to Monad Testnet...');
+      const success = await switchToMonadTestnet();
+
+      if (!success) {
+        console.warn('⚠️ Network switch failed or cancelled. User must switch manually.');
+      }
+    };
+
+    checkAndSwitchNetwork();
+  }, [authenticated, ready, wallet, switchToMonadTestnet]);
+
+  /**
    * Effect: Auto-trigger SIWE flow after Privy authentication
    * IMPORTANT: Runs only ONCE for entire app (not per component)
+   * IMPORTANT: Only runs AFTER network switch is complete
    */
   useEffect(() => {
     const hasValidCachedToken = isBackendAuthenticated();
@@ -314,7 +404,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       !hasValidCachedToken &&
       !siweInProgressRef.current &&
       !autoRetryAttemptedRef.current &&
-      !siweCompletedRef.current;
+      !siweCompletedRef.current &&
+      !isSwitchingNetwork; // Wait for network switch to complete
 
     if (shouldAutoTrigger) {
       console.log('🔐 [AuthContext] No valid cached token found. Auto-triggering SIWE flow...');
@@ -331,7 +422,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       autoRetryAttemptedRef.current = true;
     }
     // NOTE: Removed getBackendToken from dependencies to prevent re-runs
-  }, [authenticated, ready, userAddress, wallet, isBackendAuthenticated]);
+  }, [authenticated, ready, userAddress, wallet, isBackendAuthenticated, isSwitchingNetwork]);
 
   /**
    * Effect: Clear backend auth when Privy session ends

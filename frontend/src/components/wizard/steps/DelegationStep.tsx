@@ -11,9 +11,13 @@ import {
   Shield,
   X,
   RotateCcw,
+  Network,
 } from 'lucide-react';
 import { useDelegation } from '@/hooks/useDelegation';
 import { getBotExecutorAddress } from '@/lib/utils/delegation-signatures';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { monadTestnet } from '@/lib/chains';
+import { toast } from 'sonner';
 import type { Address } from 'viem';
 
 interface DelegationStepProps {
@@ -41,6 +45,8 @@ export function DelegationStep({
   onBack,
   onCancel,
 }: DelegationStepProps) {
+  const { authenticated, ready: privyReady } = usePrivy();
+  const { wallets } = useWallets();
   const {
     createDelegation,
     delegations,
@@ -50,7 +56,81 @@ export function DelegationStep({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [delegationCreated, setDelegationCreated] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const networkSwitchTriggeredRef = useRef(false);
+
+  // Get wallet from Privy
+  const wallet = wallets[0];
+
+  // Get chain ID from Privy wallet (works on ANY network)
+  const walletChainId = wallet?.chainId;
+  const chainIdNumber = walletChainId?.includes(':')
+    ? parseInt(walletChainId.split(':')[1])
+    : walletChainId ? parseInt(walletChainId) : undefined;
+
+  // Network validation
+  const isOnWrongNetwork = privyReady && authenticated && wallet && chainIdNumber !== monadTestnet.id;
+
+  /**
+   * Handle network switch to Monad testnet using Privy's wallet.switchChain()
+   */
+  const handleNetworkSwitch = async () => {
+    if (!wallet) {
+      console.error('No wallet available for network switch');
+      return;
+    }
+
+    try {
+      setIsSwitching(true);
+      console.log('🔄 [DelegationStep] Switching network using Privy wallet.switchChain()...');
+
+      // Use Privy's native wallet.switchChain() method
+      await wallet.switchChain(monadTestnet.id);
+
+      toast.success('Network switched', {
+        description: `Switched to ${monadTestnet.name}`,
+      });
+
+      networkSwitchTriggeredRef.current = false;
+      console.log('✅ [DelegationStep] Network switched successfully');
+
+      // Wait for wagmi to sync with the new network
+      console.log('⏳ [DelegationStep] Waiting for wagmi to sync with new network...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('✅ [DelegationStep] Wagmi sync delay complete');
+    } catch (error: any) {
+      console.error('Failed to switch network:', error);
+      if (!error.message?.includes('User rejected') && !error.message?.includes('rejected') && !error.message?.includes('User denied')) {
+        toast.error('Network switch failed', {
+          description: error.message || 'Please switch to Monad Testnet manually in your wallet',
+        });
+      }
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
+  /**
+   * Reset network switch flag when user successfully switches to correct network
+   */
+  useEffect(() => {
+    if (!isOnWrongNetwork && networkSwitchTriggeredRef.current) {
+      console.log('✅ [DelegationStep] User on correct network - resetting switch flag');
+      networkSwitchTriggeredRef.current = false;
+    }
+  }, [isOnWrongNetwork]);
+
+  /**
+   * Auto-trigger network switch when step opens on wrong network
+   */
+  useEffect(() => {
+    if (isOnWrongNetwork && !isSwitching && !networkSwitchTriggeredRef.current) {
+      console.log('🔄 [DelegationStep] Auto-triggering network switch to Monad Testnet...');
+      networkSwitchTriggeredRef.current = true;
+      handleNetworkSwitch();
+    }
+  }, [isOnWrongNetwork, isSwitching, handleNetworkSwitch]);
 
   /**
    * Cleanup on unmount - abort any pending operations
@@ -67,6 +147,39 @@ export function DelegationStep({
   // Check if delegation already exists
   const existingDelegation = delegations.find(
     d => d.userAddress.toLowerCase() === delegatorAddress.toLowerCase() && d.isActive
+  );
+
+  // Wrong network - show banner (but still allow viewing UI)
+  const wrongNetworkBanner = isOnWrongNetwork && (
+    <Alert className="bg-orange-50 border-orange-200">
+      <Network className="w-4 h-4 text-orange-600" />
+      <AlertDescription className="text-sm text-orange-700">
+        <div className="flex items-center justify-between">
+          <span>
+            You're on the wrong network. Please switch to <strong>Monad Testnet</strong> to create delegation.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleNetworkSwitch}
+            disabled={isSwitching}
+            className="ml-2 border-orange-300 text-orange-700 hover:bg-orange-100"
+          >
+            {isSwitching ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Switching...
+              </>
+            ) : (
+              <>
+                <Network className="w-3 h-3 mr-1" />
+                Switch Network
+              </>
+            )}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 
   /**
@@ -92,6 +205,13 @@ export function DelegationStep({
    * Handle delegation creation
    */
   const handleCreateDelegation = async () => {
+    // Check network FIRST before any operation
+    if (isOnWrongNetwork) {
+      console.warn('⚠️ Wrong network detected - triggering switch before delegation');
+      await handleNetworkSwitch();
+      return;
+    }
+
     try {
       setCreating(true);
       setError(null);
@@ -251,6 +371,9 @@ export function DelegationStep({
           Authorize the Rebased bot to execute rebalances for your strategy.
         </p>
       </div>
+
+      {/* Network warning banner */}
+      {wrongNetworkBanner}
 
       <div className="border rounded-lg p-6 space-y-4">
         <div className="flex items-start gap-3">
