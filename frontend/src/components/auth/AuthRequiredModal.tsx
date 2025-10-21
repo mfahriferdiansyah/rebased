@@ -28,10 +28,11 @@ interface AuthRequiredModalProps {
 
 export function AuthRequiredModal({ onComplete }: AuthRequiredModalProps) {
   const { ready, login, authenticated: isPrivyAuthenticated } = usePrivy();
-  const { isAuthenticating, isBackendAuthenticated } = useAuth();
+  const { isAuthenticating, isBackendAuthenticated, getBackendToken, resetAutoRetryFlags } = useAuth();
   const [showCompletion, setShowCompletion] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isManualSigning, setIsManualSigning] = useState(false);
 
   // Determine current step
   const step1Complete = isPrivyAuthenticated;
@@ -91,6 +92,23 @@ export function AuthRequiredModal({ onComplete }: AuthRequiredModalProps) {
   const handleRetry = () => {
     setErrorMessage(null);
     handleConnectWallet();
+  };
+
+  // Handle manual sign trigger
+  const handleManualSign = async () => {
+    setIsManualSigning(true);
+    setErrorMessage(null);
+    try {
+      // Reset auto-retry flags to allow signing again
+      resetAutoRetryFlags();
+      // Trigger SIWE flow
+      await getBackendToken();
+    } catch (error: any) {
+      console.error('Manual sign error:', error);
+      setErrorMessage(error?.message || 'Failed to sign message');
+    } finally {
+      setIsManualSigning(false);
+    }
   };
 
   return (
@@ -171,7 +189,7 @@ export function AuthRequiredModal({ onComplete }: AuthRequiredModalProps) {
             <CardDescription className="text-base">
               {showCompletion
                 ? "You're all set! Click below to continue to your canvas."
-                : "Connect your wallet to access the canvas and build strategies"
+                : "Sign in with your wallet to access the canvas and build strategies"
               }
             </CardDescription>
 
@@ -255,23 +273,39 @@ export function AuthRequiredModal({ onComplete }: AuthRequiredModalProps) {
                     <CheckCircle2 className="w-5 h-5 text-gray-700 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900">Wallet Connected</p>
-                      <p className="text-xs text-gray-600">Verifying signature...</p>
+                      <p className="text-xs text-gray-600">Ready to sign</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <Loader2 className="w-5 h-5 text-gray-700 animate-spin flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">Signing Message</p>
-                      <p className="text-xs text-gray-600">Please sign the message in your wallet</p>
+                  {isAuthenticating || isManualSigning ? (
+                    <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                      <Loader2 className="w-5 h-5 text-gray-700 animate-spin flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">Signing Message</p>
+                        <p className="text-xs text-gray-600">Please sign the message in your wallet</p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <Button
+                      onClick={handleManualSign}
+                      disabled={isAuthenticating || isManualSigning}
+                      size="lg"
+                      className="w-full bg-gray-900 hover:bg-gray-800 text-white font-semibold py-6 text-base transition-all duration-200 active:scale-[0.98]"
+                    >
+                      <Shield className="w-5 h-5 mr-2" />
+                      Sign Message
+                    </Button>
+                  )}
+
+                  {errorMessage && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="w-4 h-4" />
+                      <AlertDescription className="text-sm">{errorMessage}</AlertDescription>
+                    </Alert>
+                  )}
 
                   <p className="text-xs text-gray-500 text-center">
                     Step 2: Sign message to verify ownership
-                   <p className="text-xs text-red-500 text-center">
-                    Please refresh if got stuck here.
-                  </p>
                   </p>
                 </motion.div>
               ) : showCompletion ? (

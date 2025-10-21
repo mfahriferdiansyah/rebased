@@ -29,6 +29,7 @@ interface AuthContextType {
   getBackendToken: () => Promise<string | null>;
   triggerSIWE: () => Promise<void>;
   clearBackendAuth: () => void;
+  resetAutoRetryFlags: () => void;
 
   // Combined state
   isFullyAuthenticated: boolean;
@@ -289,6 +290,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   /**
+   * Reset auto-retry flags to allow manual retry
+   */
+  const resetAutoRetryFlags = useCallback(() => {
+    siweCompletedRef.current = false;
+    autoRetryAttemptedRef.current = false;
+    siweInProgressRef.current = false;
+    console.log('🔄 Auto-retry flags reset for manual retry');
+  }, []);
+
+  /**
    * Effect: Auto-trigger SIWE flow after Privy authentication
    * IMPORTANT: Runs only ONCE for entire app (not per component)
    */
@@ -346,6 +357,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     getBackendToken,
     triggerSIWE,
     clearBackendAuth,
+    resetAutoRetryFlags,
 
     // Combined state
     isFullyAuthenticated: authenticated && ready && isBackendAuthenticated(),

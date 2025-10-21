@@ -173,15 +173,6 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
             This account allows the bot to execute rebalances on your behalf with signed delegations.
           </AlertDescription>
         </Alert>
-
-        <div className="flex justify-end gap-2 pt-4">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </div>
       </div>
     );
   }
