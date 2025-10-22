@@ -39,8 +39,8 @@ export function TokenSelectionModal({
   // Define available networks - using actual chain logos, NO emojis
   const networks = [
     { id: 'all', name: 'All networks', logoUrl: null, locked: false },
+    { id: '84532', name: 'Base Sepolia', logoUrl: getChainLogoUrl(84532), locked: false },
     { id: '10143', name: 'Monad Testnet', logoUrl: getChainLogoUrl(10143), locked: false },
-    { id: '84532', name: 'Base Sepolia', logoUrl: getChainLogoUrl(84532), locked: true },
   ];
 
   // Filter networks based on search
@@ -74,8 +74,8 @@ export function TokenSelectionModal({
   const fetchTokens = async () => {
     setLoading(true);
     try {
-      // ONLY fetch Monad tokens (10143) - Base is coming soon
-      const chainIds = selectedChainFilter === 'all' ? [10143] : Number(selectedChainFilter);
+      // Fetch tokens from both supported chains (Base Sepolia and Monad Testnet)
+      const chainIds = selectedChainFilter === 'all' ? [84532, 10143] : Number(selectedChainFilter);
       const response = await tokensApi.getTokens(chainIds);
       setTokens(response.tokens);
       setFilteredTokens(response.tokens);

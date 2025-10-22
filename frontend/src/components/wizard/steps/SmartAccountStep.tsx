@@ -16,7 +16,7 @@ import {
 import { useSmartAccount } from '@/hooks/useSmartAccount';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useWalletClient } from 'wagmi';
-import { monadTestnet } from '@/lib/chains';
+import { monadTestnet, baseSepoliaTestnet } from '@/lib/chains';
 import { toast } from 'sonner';
 import type { Address } from 'viem';
 
@@ -60,11 +60,12 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
     ? parseInt(walletChainId.split(':')[1])
     : walletChainId ? parseInt(walletChainId) : undefined;
 
-  // Network validation
-  const isOnWrongNetwork = privyReady && authenticated && wallet && chainIdNumber !== monadTestnet.id;
+  // Network validation - check if on supported network (Base or Monad)
+  const isSupportedNetwork = chainIdNumber === baseSepoliaTestnet.id || chainIdNumber === monadTestnet.id;
+  const isOnWrongNetwork = privyReady && authenticated && wallet && !isSupportedNetwork;
 
   /**
-   * Handle network switch to Monad testnet using Privy's wallet.switchChain()
+   * Handle network switch to Base Sepolia using Privy's wallet.switchChain()
    */
   const handleNetworkSwitch = async () => {
     if (!wallet) {
@@ -77,10 +78,10 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       console.log('🔄 Switching network using Privy wallet.switchChain()...');
 
       // Use Privy's native wallet.switchChain() method
-      await wallet.switchChain(monadTestnet.id);
+      await wallet.switchChain(baseSepoliaTestnet.id);
 
       toast.success('Network switched', {
-        description: `Switched to ${monadTestnet.name}`,
+        description: `Switched to ${baseSepoliaTestnet.name}`,
       });
 
       // Reset flag on successful switch
@@ -97,7 +98,7 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       // Only show error toast if not a user rejection
       if (!error.message?.includes('User rejected') && !error.message?.includes('rejected') && !error.message?.includes('User denied')) {
         toast.error('Network switch failed', {
-          description: error.message || 'Please switch to Monad Testnet manually in your wallet',
+          description: error.message || 'Please switch to Base Sepolia manually in your wallet',
         });
       }
     } finally {
@@ -105,28 +106,6 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
     }
   };
 
-  /**
-   * Reset network switch flag when user successfully switches to correct network
-   * This allows re-triggering if user switches back to wrong network
-   */
-  useEffect(() => {
-    if (!isOnWrongNetwork && networkSwitchTriggeredRef.current) {
-      console.log('✅ [SmartAccountStep] User on correct network - resetting switch flag');
-      networkSwitchTriggeredRef.current = false;
-    }
-  }, [isOnWrongNetwork]);
-
-  /**
-   * Auto-trigger network switch when wizard opens on wrong network
-   * Triggers whenever network becomes wrong (not just once per mount)
-   */
-  useEffect(() => {
-    if (isOnWrongNetwork && !isSwitching && !networkSwitchTriggeredRef.current) {
-      console.log('🔄 [SmartAccountStep] Auto-triggering network switch to Monad Testnet...');
-      networkSwitchTriggeredRef.current = true;
-      handleNetworkSwitch();
-    }
-  }, [isOnWrongNetwork, isSwitching, handleNetworkSwitch]);
 
   /**
    * Cleanup on unmount - abort any pending operations
@@ -187,13 +166,6 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
    * Handle DeleGator creation
    */
   const handleCreateDeleGator = async () => {
-    // Check network FIRST before any operation
-    if (isOnWrongNetwork) {
-      console.warn('⚠️ Wrong network detected - triggering switch before operation');
-      await handleNetworkSwitch();
-      return;
-    }
-
     if (!userAddress) {
       setError('Please connect your wallet first');
       return;
@@ -268,19 +240,19 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
           <div className="flex items-start gap-3">
             <Network className="w-6 h-6 text-orange-600 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-medium text-orange-900">Wrong Network</h3>
+              <h3 className="font-medium text-orange-900">Unsupported Network</h3>
               <p className="text-sm text-orange-700 mt-1">
-                Please switch to Monad Testnet to continue with smart account setup.
+                Please switch to Base Sepolia or Monad Testnet to continue.
               </p>
 
               <div className="mt-4 space-y-2 text-sm text-orange-800">
                 <div className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
-                  <span>Required Network: <strong>Monad Testnet</strong></span>
+                  <span>Supported Networks: <strong>Base Sepolia or Monad Testnet</strong></span>
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
-                  <span>Required Chain ID: <strong>{monadTestnet.id}</strong></span>
+                  <span>Supported Chain IDs: <strong>{baseSepoliaTestnet.id}, {monadTestnet.id}</strong></span>
                 </div>
                 {chainIdNumber && (
                   <div className="flex items-start gap-2">
@@ -296,8 +268,8 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
         <Alert>
           <Info className="w-4 h-4" />
           <AlertDescription className="text-sm">
-            Click the button below to switch your wallet to Monad Testnet.
-            Your wallet will prompt you to approve the network switch.
+            You can switch networks via Privy's wallet selector (click your address),
+            or use the button below to switch to Base Sepolia (default network).
           </AlertDescription>
         </Alert>
 
@@ -322,7 +294,7 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
             ) : (
               <>
                 <Network className="w-4 h-4 mr-2" />
-                Switch to Monad Testnet
+                Switch to Base Sepolia
               </>
             )}
           </Button>

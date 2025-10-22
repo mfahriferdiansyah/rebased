@@ -42,11 +42,11 @@ export const privyConfig: PrivyClientConfig = {
     showWalletUIs: true,
   },
 
-  // Supported blockchain networks - ONLY Monad for hackathon (Base coming soon)
-  supportedChains: [monadTestnet],
+  // Supported blockchain networks - Base Sepolia (default) and Monad Testnet
+  supportedChains: [baseSepoliaTestnet, monadTestnet],
 
-  // Default chain when wallet is first created
-  defaultChain: monadTestnet,
+  // Default chain when wallet is first created - Base Sepolia
+  defaultChain: baseSepoliaTestnet,
 
   // Fiat On-Ramp (Moonpay)
   fiatOnRamp: {
