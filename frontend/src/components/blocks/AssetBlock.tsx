@@ -91,7 +91,7 @@ export function AssetBlock({
             block.data.chainId === 10143
               ? 'Monad'
               : block.data.chainId === 8453
-              ? 'Base Mainnet'
+              ? 'Base'
               : 'Base Sepolia'
           }
           className="w-3 h-3 rounded-full mr-1.5"
@@ -99,7 +99,7 @@ export function AssetBlock({
         {block.data.chainId === 10143
           ? 'Monad'
           : block.data.chainId === 8453
-          ? 'Base Mainnet'
+          ? 'Base'
           : 'Base Sepolia'}
       </Badge>
 

@@ -43,10 +43,7 @@ export class GasService {
       // Update cache
       this.gasCache.set(chain, adjustedGasPrice);
 
-      this.logger.debug(
-        `Gas price for ${chain}: ${adjustedGasPrice.toString()} (${multiplier}x)`,
-      );
-
+      // Silent - gas price checked every 10s, no need to log
       return adjustedGasPrice;
     } catch (error) {
       this.logger.error(
@@ -148,9 +145,12 @@ export class GasService {
 
     const isFavorable = current <= threshold;
 
-    this.logger.debug(
-      `Gas check for ${chain}: ${current} <= ${threshold} = ${isFavorable}`,
-    );
+    // Silent - checked frequently, only log when unfavorable
+    if (!isFavorable) {
+      this.logger.warn(
+        `Gas unfavorable for ${chain}: ${current} > ${threshold}`,
+      );
+    }
 
     return isFavorable;
   }

@@ -315,11 +315,32 @@ export class ExecutorProcessor {
         const botAddress = walletClient.account.address;
 
         // Calculate drift AFTER rebalance execution
-        this.logger.log('Calculating driftAfter by re-analyzing portfolio...');
+        this.logger.log('Waiting for blockchain state to update before calculating driftAfter...');
         let driftAfter = BigInt(drift); // Default to original drift if re-analysis fails
 
         try {
-          // Re-evaluate portfolio state after swaps executed
+          // Wait for next block to ensure state is fully propagated
+          // This is critical because token balances don't update immediately after tx confirmation
+          const currentBlock = await publicClient.getBlockNumber();
+          this.logger.log(`Transaction confirmed at block ${currentBlock}, waiting for next block...`);
+
+          // Wait for next block (max 10 seconds)
+          const maxWaitTime = 10000;
+          const startTime = Date.now();
+          let nextBlock = currentBlock;
+
+          while (nextBlock <= currentBlock && Date.now() - startTime < maxWaitTime) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            nextBlock = await publicClient.getBlockNumber();
+          }
+
+          if (nextBlock > currentBlock) {
+            this.logger.log(`New block detected (${nextBlock}), re-evaluating portfolio...`);
+          } else {
+            this.logger.warn('Next block not detected within 10s, proceeding with evaluation anyway');
+          }
+
+          // Re-evaluate portfolio state after swaps executed and state propagated
           const evaluationAfter = await this.strategyEngine.evaluateStrategy(
             strategy.strategyLogic,
             strategy,

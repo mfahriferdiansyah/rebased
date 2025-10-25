@@ -36,9 +36,7 @@ export class MonitorService {
     this.isMonitoring = true;
 
     try {
-      this.logger.debug('Starting strategy monitoring cycle');
-
-      // Get all active strategies with delegatorAddress (no delegation required)
+      // Get all active strategies with active delegations
       const strategies = await this.prisma.strategy.findMany({
         where: {
           isActive: true,
@@ -46,9 +44,18 @@ export class MonitorService {
           delegatorAddress: {
             not: null, // Only monitor strategies with DeleGator smart contract
           },
+          delegations: {
+            some: {
+              isActive: true, // CRITICAL: Only monitor strategies with active delegations
+            },
+          },
         },
         include: {
           user: true,
+          delegations: {
+            where: { isActive: true },
+            take: 1,
+          },
           rebalances: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -56,13 +63,13 @@ export class MonitorService {
         },
       });
 
-      this.logger.log(`Monitoring ${strategies.length} active strategies`);
+      if (strategies.length > 0) {
+        this.logger.log(`📊 Monitoring ${strategies.length} active ${strategies.length === 1 ? 'strategy' : 'strategies'}`);
+      }
 
       for (const strategy of strategies) {
         await this.checkStrategy(strategy);
       }
-
-      this.logger.debug('Monitoring cycle completed');
     } catch (error) {
       this.logger.error(`Monitoring error: ${error.message}`, error.stack);
     } finally {
@@ -75,7 +82,13 @@ export class MonitorService {
    */
   private async checkStrategy(strategy: any) {
     try {
-      this.logger.debug(`🔍 Checking strategy ${strategy.id}...`);
+      // Check if strategy has active delegation (defensive check)
+      if (!strategy.delegations || strategy.delegations.length === 0) {
+        this.logger.warn(
+          `Strategy ${strategy.id} has no active delegation, skipping...`,
+        );
+        return;
+      }
 
       // Check if strategy has strategyLogic
       if (!strategy.strategyLogic) {
@@ -90,15 +103,9 @@ export class MonitorService {
       const timeSinceLastRebalance = Date.now() - lastRebalance.getTime();
       const intervalMs = Number(strategy.rebalanceInterval) * 1000;
 
-      this.logger.debug(
-        `Strategy ${strategy.id}: timeSinceLastRebalance=${Math.floor(timeSinceLastRebalance / 1000)}s, intervalMs=${intervalMs / 1000}s, lastRebalance=${lastRebalance.toISOString()}`,
-      );
-
       if (timeSinceLastRebalance < intervalMs) {
-        this.logger.debug(
-          `Strategy ${strategy.id}: Not yet time to rebalance (${Math.floor((intervalMs - timeSinceLastRebalance) / 1000)}s remaining)`,
-        );
-        return; // Not yet time to rebalance
+        // Silent - not yet time, no need to log
+        return;
       }
 
       // Use StrategyEngine to check if rebalancing is needed
@@ -108,14 +115,12 @@ export class MonitorService {
       );
 
       if (!rebalanceCheck.needs) {
-        this.logger.debug(
-          `Strategy ${strategy.id}: ${rebalanceCheck.reason}`,
-        );
+        // Silent - no action needed
         return;
       }
 
       this.logger.log(
-        `Strategy ${strategy.id} needs rebalancing: ${rebalanceCheck.reason}`,
+        `✓ Strategy ${strategy.id} needs rebalancing: ${rebalanceCheck.reason}`,
       );
 
       // Add to rebalance queue
@@ -156,7 +161,7 @@ export class MonitorService {
       timestamp: new Date().toISOString(),
     });
 
-    this.logger.log(`Queued rebalance for strategy ${strategy.id} with priority ${jobData.priority}`);
+    this.logger.log(`→ Queued rebalance job (priority: ${jobData.priority}, drift: ${drift / 100}%)`);
   }
 
   /**

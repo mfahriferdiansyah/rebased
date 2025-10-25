@@ -9,16 +9,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Loader2, CheckCircle2, XCircle, Clock, ExternalLink, TrendingDown, Zap, DollarSign, Activity, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, ExternalLink, Zap, DollarSign, Activity, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import { formatEther } from 'viem';
 import { getChainById, getNativeCurrencySymbol } from '@/lib/chains';
 
 export function HistoryView() {
-  const { rebalances, stats, loading, loadingStats, total } = useRebalances({ limit: 50 });
+  const { rebalances, stats, loading, loadingStats, total, refreshRebalances, refreshStats } = useRebalances({ limit: 50 });
   const [selectedRebalance, setSelectedRebalance] = useState<Rebalance | null>(null);
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [selectedError, setSelectedError] = useState<string>('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Format date relative to now
   const formatDate = (dateString: string) => {
@@ -95,6 +96,29 @@ export function HistoryView() {
     return error.slice(0, maxLength) + '...';
   };
 
+  // Handle refresh with minimum delay for smooth UX
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+
+    const startTime = Date.now();
+    const minDelay = 600; // Minimum 600ms for smooth animation
+
+    try {
+      await Promise.all([
+        refreshRebalances({ limit: 50 }),
+        refreshStats(),
+      ]);
+
+      // Ensure minimum delay for smooth transition
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minDelay) {
+        await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // Loading state
   if (loading && rebalances.length === 0) {
     return (
@@ -128,17 +152,51 @@ export function HistoryView() {
 
   return (
     <div className="space-y-6">
-      {/* Title - MOVED TO TOP */}
-      <div>
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(40px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.4s ease-out;
+        }
+      `}</style>
+      {/* Title with Refresh Icon */}
+      <div className="flex items-center gap-3">
         <h3 className="text-lg font-bold text-gray-900">
           Rebalance History
           <span className="text-sm font-normal text-gray-600 ml-2">({total} total)</span>
         </h3>
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing || loading}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          title={isRefreshing ? 'Refreshing...' : 'Refresh data'}
+          aria-label="Refresh rebalance history"
+        >
+          <RefreshCw className={`w-5 h-5 transition-transform ${isRefreshing ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
+      {/* Loading State */}
+      {isRefreshing && (
+        <div className="flex items-center justify-center py-16">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
+            <p className="text-sm text-gray-500">Refreshing data...</p>
+          </div>
+        </div>
+      )}
+
       {/* Stats Overview */}
-      {stats && !loadingStats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {!isRefreshing && stats && !loadingStats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fadeIn">
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <div className="flex items-center gap-2 text-gray-600 text-xs mb-1">
               <Activity className="w-3.5 h-3.5" />
@@ -156,15 +214,15 @@ export function HistoryView() {
             <div className="text-xs text-green-700">{stats.successRate.toFixed(1)}% rate</div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-blue-700 text-xs mb-1">
-              <TrendingDown className="w-3.5 h-3.5" />
-              Avg Drift
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-red-700 text-xs mb-1">
+              <XCircle className="w-3.5 h-3.5" />
+              Error Count
             </div>
-            <div className="text-2xl font-bold text-blue-900">
-              {(stats.avgDriftReduction / 100).toFixed(2)}%
+            <div className="text-2xl font-bold text-red-900">
+              {stats.total - stats.successful}
             </div>
-            <div className="text-xs text-blue-700">reduction</div>
+            <div className="text-xs text-red-700">failed rebalances</div>
           </div>
 
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -183,9 +241,9 @@ export function HistoryView() {
       )}
 
       {/* Timeline */}
-      <div>
-
-        <div className="space-y-3">
+      {!isRefreshing && (
+        <div className="animate-fadeIn">
+          <div className="space-y-3">
           {rebalances.map((rebalance, index) => {
             const statusConfig = getStatusConfig(rebalance.status);
             const StatusIcon = statusConfig.icon;
@@ -299,10 +357,11 @@ export function HistoryView() {
             );
           })}
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Load More (Future enhancement) */}
-      {total > rebalances.length && (
+      {!isRefreshing && total > rebalances.length && (
         <div className="text-center py-4">
           <p className="text-sm text-gray-600">
             Showing {rebalances.length} of {total} rebalances
