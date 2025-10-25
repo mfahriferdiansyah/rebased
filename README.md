@@ -1,10 +1,29 @@
+## Production Deployment - Base Mainnet
+
+**Network:** Base (Chain ID: 8453)
+**Deployed:** 2025-10-24
+**Version:** v1.4.0 (Bot Authorization)
+
+### Contract Addresses
+
+| Contract              | Address                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **DelegationManager** | [`0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`](https://base.blockscout.com/address/0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3) |
+| **StrategyRegistry**  | [`0x051790142C92E55C88d45469419CBC74735bDec5`](https://base.blockscout.com/address/0x051790142C92E55C88d45469419CBC74735bDec5) |
+| **RebalanceExecutor** | [`0xE5937713Ed44977dBBBdFF63aDab110e2A8aFF57`](https://base.blockscout.com/address/0xE5937713Ed44977dBBBdFF63aDab110e2A8aFF57) |
+| **PythOracle**        | [`0x3727aa26BFA5b995A17551425d3cDDce24df9f10`](https://base.blockscout.com/address/0x3727aa26BFA5b995A17551425d3cDDce24df9f10) |
+| **UniswapHelper**     | [`0x32ff846b58baf82Ad30f64756D3a069d0AdBf707`](https://base.blockscout.com/address/0x32ff846b58baf82Ad30f64756D3a069d0AdBf707) |
+| **RebalancerConfig**  | [`0xCC7EB3C51b19E14b3B39996c673a596274115090`](https://base.blockscout.com/address/0xCC7EB3C51b19E14b3B39996c673a596274115090) |
+
+All contracts verified on [Blockscout](https://base.blockscout.com/)
+
+---
+
 # Rebased
 
 **Non-custodial portfolio automation platform powered by MetaMask smart accounts on Base.**
 
 Automate your crypto portfolio strategies (swap, transfer, rebalance) based on conditions you define, while maintaining full control through MetaMask DeleGator.
-
-**Production Deployment:** Base Mainnet (Chain ID: 8453)
 
 ---
 
@@ -160,26 +179,7 @@ Drag-and-drop canvas. Zero coding knowledge. Zero complexity.
 
 ---
 
-## Production Deployment - Base Mainnet
-
-**Network:** Base (Chain ID: 8453)
-**Deployed:** 2025-10-24
-**Version:** v1.4.0 (Bot Authorization)
-
-### Contract Addresses
-
-| Contract | Address |
-|----------|---------|
-| **DelegationManager** | `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3` |
-| **StrategyRegistry** | `0x051790142C92E55C88d45469419CBC74735bDec5` |
-| **RebalanceExecutor** | `0xE5937713Ed44977dBBBdFF63aDab110e2A8aFF57` |
-| **PythOracle** | `0x3727aa26BFA5b995A17551425d3cDDce24df9f10` |
-| **UniswapHelper** | `0x32ff846b58baf82Ad30f64756D3a069d0AdBf707` |
-| **RebalancerConfig** | `0xCC7EB3C51b19E14b3B39996c673a596274115090` |
-
-All contracts verified on [Basescan](https://base.blockscout.com/)
-
-### Security Model
+## Security Model
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -309,21 +309,21 @@ Each component has detailed documentation in its `/docs` folder:
 
 ## Technology Stack
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Frontend** | React + Vite + TypeScript | 18 / 5.0 |
-| **UI Library** | Tailwind CSS + shadcn/ui | 3.4 |
-| **Canvas** | React Flow | 11.11 |
-| **Wallet** | Privy + Viem | 2.38 |
-| **Backend** | NestJS + TypeScript | 10 / 5.3 |
-| **Database** | PostgreSQL + Prisma | 16 / 5.8 |
-| **Cache/Queue** | Redis + Bull | 7 / 4.12 |
-| **Blockchain** | Viem (Base) | 2.38 |
-| **Contracts** | Solidity + Foundry | 0.8.23 |
-| **Oracle** | Pyth Network | Latest |
-| **DEX** | 0x Protocol + Uniswap V2 | Latest |
-| **Delegation** | MetaMask v1.3.0 (ERC-7710) | 1.3.0 |
-| **AI** | OpenAI GPT-4 | Latest |
+| Component       | Technology                 | Version  |
+| --------------- | -------------------------- | -------- |
+| **Frontend**    | React + Vite + TypeScript  | 18 / 5.0 |
+| **UI Library**  | Tailwind CSS + shadcn/ui   | 3.4      |
+| **Canvas**      | React Flow                 | 11.11    |
+| **Wallet**      | Privy + Viem               | 2.38     |
+| **Backend**     | NestJS + TypeScript        | 10 / 5.3 |
+| **Database**    | PostgreSQL + Prisma        | 16 / 5.8 |
+| **Cache/Queue** | Redis + Bull               | 7 / 4.12 |
+| **Blockchain**  | Viem (Base)                | 2.38     |
+| **Contracts**   | Solidity + Foundry         | 0.8.23   |
+| **Oracle**      | Pyth Network               | Latest   |
+| **DEX**         | 0x Protocol + Uniswap V2   | Latest   |
+| **Delegation**  | MetaMask v1.3.0 (ERC-7710) | 1.3.0    |
+| **AI**          | OpenAI GPT-4               | Latest   |
 
 ---
 
@@ -398,6 +398,7 @@ forge build           # Compile contracts
 ```
 
 **Deploy to Base Mainnet:**
+
 ```bash
 forge script script/Deploy.s.sol \
   --rpc-url https://mainnet.base.org \
