@@ -23,9 +23,18 @@ export class DelegationsService {
    * EIP-712 domain for delegation signatures (MetaMask v1.3.0 compatible)
    */
   private getDomain(chainId: number) {
-    // Map chainId to chain name: 10143 = Monad Testnet, 10200 = Monad Mainnet
+    // Map chainId to chain name
     const MONAD_CHAIN_IDS = [10200, 10143];
-    const chainName = MONAD_CHAIN_IDS.includes(chainId) ? 'monad' : 'base';
+    let chainName: string;
+
+    if (MONAD_CHAIN_IDS.includes(chainId)) {
+      chainName = 'monad';
+    } else if (chainId === 8453) {
+      chainName = 'base-mainnet'; // Base Mainnet
+    } else {
+      chainName = 'base-sepolia'; // Base Sepolia (84532) or fallback
+    }
+
     const delegationManagerAddress = this.config.get(
       `blockchain.${chainName}.contracts.delegationManager`,
     );
@@ -269,6 +278,16 @@ export class DelegationsService {
 
     // Return delegation data for on-chain revocation
     // Frontend will call DelegationManager.disableDelegation() with this data
+    const MONAD_CHAIN_IDS = [10200, 10143];
+    let chainName: string;
+    if (MONAD_CHAIN_IDS.includes(delegation.chainId)) {
+      chainName = 'monad';
+    } else if (delegation.chainId === 8453) {
+      chainName = 'base-mainnet';
+    } else {
+      chainName = 'base-sepolia';
+    }
+
     return {
       success: true,
       message: 'Delegation marked as inactive in database',
@@ -282,7 +301,7 @@ export class DelegationsService {
         deadline: delegation.delegationData.deadline || 0,
       },
       contractAddress: this.config.get(
-        `blockchain.${delegation.chainId === 84532 ? 'base' : 'monad'}.contracts.delegationManager`,
+        `blockchain.${chainName}.contracts.delegationManager`,
       ),
       chainId: delegation.chainId,
     };

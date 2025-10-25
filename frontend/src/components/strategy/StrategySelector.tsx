@@ -142,8 +142,12 @@ export function StrategySelector({
                 <div className="font-medium text-orange-900 text-sm">No Strategies Found</div>
                 <div className="text-orange-700 text-xs leading-relaxed">
                   You don't have any saved strategies for{' '}
-                  {chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia'}.
-                  Create a strategy on the canvas and save it first.
+                  {chainId === 10143
+                    ? 'Monad Testnet'
+                    : chainId === 8453
+                    ? 'Base Mainnet'
+                    : 'Base Sepolia'}
+                  . Create a strategy on the canvas and save it first.
                 </div>
               </div>
             </div>
@@ -178,7 +182,12 @@ export function StrategySelector({
             </Select>
             <div className="text-xs text-gray-500 mt-1">
               {matchingStrategies.length} strateg{matchingStrategies.length !== 1 ? 'ies' : 'y'}{' '}
-              available on {chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia'}
+              available on{' '}
+              {chainId === 10143
+                ? 'Monad Testnet'
+                : chainId === 8453
+                ? 'Base Mainnet'
+                : 'Base Sepolia'}
             </div>
           </>
         )}

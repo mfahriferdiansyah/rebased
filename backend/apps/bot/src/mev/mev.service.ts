@@ -38,7 +38,7 @@ export class MevService {
     );
 
     // Strategy 1: Flashbots RPC (private mempool)
-    if (enableFlashbots && chain === 'base') {
+    if (enableFlashbots && (chain === 'base-mainnet' || chain === 'base-sepolia')) {
       return this.sendViaFlashbots(tx, chain);
     }
 

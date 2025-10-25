@@ -14,8 +14,8 @@ export const monadTestnet = defineChain({
     symbol: 'MON',
   },
   rpcUrls: {
-    default: { http: ['https://testnet-rpc.monad.xyz'] },
-    public: { http: ['https://testnet-rpc.monad.xyz'] },
+    default: { http: [import.meta.env.VITE_MONAD_RPC_URL || 'https://testnet-rpc.monad.xyz'] },
+    public: { http: [import.meta.env.VITE_MONAD_RPC_URL || 'https://testnet-rpc.monad.xyz'] },
   },
   blockExplorers: {
     default: {
@@ -40,8 +40,8 @@ export const baseSepoliaTestnet = defineChain({
     symbol: 'ETH',
   },
   rpcUrls: {
-    default: { http: ['https://sepolia.base.org'] },
-    public: { http: ['https://sepolia.base.org'] },
+    default: { http: [import.meta.env.VITE_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'] },
+    public: { http: [import.meta.env.VITE_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'] },
   },
   blockExplorers: {
     default: {
@@ -53,14 +53,45 @@ export const baseSepoliaTestnet = defineChain({
 });
 
 /**
- * All supported chains
+ * Base Mainnet Configuration
+ * Chain ID: 8453
  */
-export const supportedChains = [monadTestnet, baseSepoliaTestnet] as const;
+export const baseMainnet = defineChain({
+  id: 8453,
+  name: 'Base',
+  network: 'base',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Ether',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: { http: [import.meta.env.VITE_BASE_MAINNET_RPC_URL || 'https://mainnet.base.org'] },
+    public: { http: [import.meta.env.VITE_BASE_MAINNET_RPC_URL || 'https://mainnet.base.org'] },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Blockscout',
+      url: 'https://base.blockscout.com',
+    },
+  },
+  testnet: false,
+});
 
 /**
- * Default chain (Monad)
+ * All supported chains
+ * Base Mainnet (production) + Monad Testnet (development)
  */
-export const defaultChain = monadTestnet;
+export const supportedChains = [
+  baseMainnet,        // Base Mainnet (8453)
+  monadTestnet,       // Monad Testnet (10143)
+  // baseSepoliaTestnet, // Not used
+] as const;
+
+/**
+ * Default chain (Base Mainnet for production)
+ */
+export const defaultChain = baseMainnet;
 
 /**
  * Chain ID to chain mapping
@@ -68,6 +99,7 @@ export const defaultChain = monadTestnet;
 export const chainById = {
   [monadTestnet.id]: monadTestnet,
   [baseSepoliaTestnet.id]: baseSepoliaTestnet,
+  [baseMainnet.id]: baseMainnet,
 } as const;
 
 /**

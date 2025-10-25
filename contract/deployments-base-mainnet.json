@@ -1,12 +1,12 @@
 {
-  "monad": {
+  "base-mainnet": {
     "pythOracle": "0x3727aa26BFA5b995A17551425d3cDDce24df9f10",
     "pythOracleImpl": "0xaCed53C99F043F3c441D659ba1B239C943356dee",
     "rebalancerConfig": "0xCC7EB3C51b19E14b3B39996c673a596274115090",
     "rebalancerConfigImpl": "0x4B672d1aabB45246d84Ef0a1304c62445306143a",
     "uniswapHelper": "0x32ff846b58baf82Ad30f64756D3a069d0AdBf707",
     "uniswapHelperImpl": "0xd595Aa5a4509F0FB0308E9ed52205a96C6A1594d",
-    "delegationManager": "0xB7270af90e6Bac6daD609f7B46E45D727A73aEB0",
+    "delegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
     "strategyRegistry": "0x051790142C92E55C88d45469419CBC74735bDec5",
     "strategyRegistryImpl": "0xD9d66C6667E0CFf76948A88668F746EffF90FCcE",
     "rebalanceExecutor": "0xE5937713Ed44977dBBBdFF63aDab110e2A8aFF57",

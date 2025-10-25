@@ -16,7 +16,7 @@ import {
 import { useDelegation } from '@/hooks/useDelegation';
 import { getBotExecutorAddress } from '@/lib/utils/delegation-signatures';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { monadTestnet } from '@/lib/chains';
+import { getChainById } from '@/lib/chains';
 import { toast } from 'sonner';
 import type { Address } from 'viem';
 
@@ -60,6 +60,12 @@ export function DelegationStep({
   const abortControllerRef = useRef<AbortController | null>(null);
   const networkSwitchTriggeredRef = useRef(false);
 
+  // Get the target chain from the strategy's chainId
+  const targetChain = getChainById(chainId);
+  if (!targetChain) {
+    console.error(`Unsupported chain ID: ${chainId}`);
+  }
+
   // Get wallet from Privy
   const wallet = wallets[0];
 
@@ -69,8 +75,8 @@ export function DelegationStep({
     ? parseInt(walletChainId.split(':')[1])
     : walletChainId ? parseInt(walletChainId) : undefined;
 
-  // Network validation
-  const isOnWrongNetwork = privyReady && authenticated && wallet && chainIdNumber !== monadTestnet.id;
+  // Network validation - check if user is on the target network
+  const isOnWrongNetwork = privyReady && authenticated && wallet && chainIdNumber !== chainId;
 
   /**
    * Handle network switch to Monad testnet using Privy's wallet.switchChain()
@@ -81,15 +87,20 @@ export function DelegationStep({
       return;
     }
 
+    if (!targetChain) {
+      console.error('Target chain not found');
+      return;
+    }
+
     try {
       setIsSwitching(true);
       console.log('🔄 [DelegationStep] Switching network using Privy wallet.switchChain()...');
 
       // Use Privy's native wallet.switchChain() method
-      await wallet.switchChain(monadTestnet.id);
+      await wallet.switchChain(targetChain.id);
 
       toast.success('Network switched', {
-        description: `Switched to ${monadTestnet.name}`,
+        description: `Switched to ${targetChain.name}`,
       });
 
       networkSwitchTriggeredRef.current = false;
@@ -103,7 +114,7 @@ export function DelegationStep({
       console.error('Failed to switch network:', error);
       if (!error.message?.includes('User rejected') && !error.message?.includes('rejected') && !error.message?.includes('User denied')) {
         toast.error('Network switch failed', {
-          description: error.message || 'Please switch to Monad Testnet manually in your wallet',
+          description: error.message || `Please switch to ${targetChain.name} manually in your wallet`,
         });
       }
     } finally {
@@ -126,11 +137,11 @@ export function DelegationStep({
    */
   useEffect(() => {
     if (isOnWrongNetwork && !isSwitching && !networkSwitchTriggeredRef.current) {
-      console.log('🔄 [DelegationStep] Auto-triggering network switch to Monad Testnet...');
+      console.log(`🔄 [DelegationStep] Auto-triggering network switch to ${targetChain?.name}...`);
       networkSwitchTriggeredRef.current = true;
       handleNetworkSwitch();
     }
-  }, [isOnWrongNetwork, isSwitching, handleNetworkSwitch]);
+  }, [isOnWrongNetwork, isSwitching, handleNetworkSwitch, targetChain]);
 
   /**
    * Cleanup on unmount - abort any pending operations
@@ -156,7 +167,7 @@ export function DelegationStep({
       <AlertDescription className="text-sm text-orange-700">
         <div className="flex items-center justify-between">
           <span>
-            You're on the wrong network. Please switch to <strong>Monad Testnet</strong> to create delegation.
+            You're on the wrong network. Please switch to <strong>{targetChain?.name}</strong> to create delegation.
           </span>
           <Button
             size="sm"

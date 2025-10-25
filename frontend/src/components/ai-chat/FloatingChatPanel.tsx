@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { aiApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Strategy } from "@/lib/types/strategy";
@@ -28,6 +28,21 @@ export function FloatingChatPanel({ onStrategyGenerated, currentStrategy }: Floa
       content: "I'm here to help you create portfolio strategies! Describe what you want to build.",
     },
   ]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  // Auto-scroll to bottom when chat is expanded
+  useEffect(() => {
+    if (isExpanded) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100); // Small delay to ensure DOM is rendered
+    }
+  }, [isExpanded]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +158,8 @@ export function FloatingChatPanel({ onStrategyGenerated, currentStrategy }: Floa
                   </div>
                 </div>
               )}
+              {/* Auto-scroll target */}
+              <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
 

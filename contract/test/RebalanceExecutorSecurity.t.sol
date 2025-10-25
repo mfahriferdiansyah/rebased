@@ -164,12 +164,16 @@ contract RebalanceExecutorSecurityTest is Test {
         address[] memory tokensIn = new address[](1);
         tokensIn[0] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100 ether;  // Exact approval amount
+
         // Should revert with UnapprovedDEX error
         vm.expectRevert(abi.encodeWithSelector(RebalanceExecutor.UnapprovedDEX.selector, maliciousDEX));
         executor.rebalance(
             address(delegationManager),  // DeleGator smart account
             0,
             tokensIn,
+            amountsIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
@@ -263,12 +267,16 @@ contract RebalanceExecutorSecurityTest is Test {
         address[] memory tokensIn = new address[](1);
         tokensIn[0] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100 ether;  // Exact approval amount
+
         // Should revert with InsufficientSlippageProtection
         vm.expectRevert(RebalanceExecutor.InsufficientSlippageProtection.selector);
         executor.rebalance(
             address(delegationManager),  // DeleGator smart account
             0,
             tokensIn,
+            amountsIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
@@ -305,12 +313,17 @@ contract RebalanceExecutorSecurityTest is Test {
         tokensIn[0] = address(tokenA);
         tokensIn[1] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = 100 ether;
+        amountsIn[1] = 100 ether;
+
         // Should revert with length mismatch error
         vm.expectRevert("Min output amounts length mismatch");
         executor.rebalance(
             address(delegationManager),  // DeleGator smart account
             0,
             tokensIn,
+            amountsIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
@@ -352,12 +365,18 @@ contract RebalanceExecutorSecurityTest is Test {
         tokensIn[1] = address(tokenA);
         tokensIn[2] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](3);
+        amountsIn[0] = 100 ether;
+        amountsIn[1] = 100 ether;
+        amountsIn[2] = 100 ether;
+
         // Should revert with InsufficientSlippageProtection
         vm.expectRevert(RebalanceExecutor.InsufficientSlippageProtection.selector);
         executor.rebalance(
             address(delegationManager),  // DeleGator smart account
             0,
             tokensIn,
+            amountsIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
@@ -401,12 +420,16 @@ contract RebalanceExecutorSecurityTest is Test {
         address[] memory tokensIn = new address[](1);
         tokensIn[0] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100 ether;
+
         // Should revert with ContractPaused
         vm.expectRevert(RebalanceExecutor.ContractPaused.selector);
         executor.rebalance(
             address(delegationManager),  // DeleGator smart account
             0,
             tokensIn,
+            amountsIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
@@ -482,12 +505,16 @@ contract RebalanceExecutorSecurityTest is Test {
         address[] memory tokensIn = new address[](1);
         tokensIn[0] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100 ether;
+
         // This should pass all security checks (but may fail on delegation or strategy checks)
         // The important thing is it doesn't revert with our new security errors
         try executor.rebalance(
             address(delegationManager),  // DeleGator smart account
             0,
             tokensIn,
+            amountsIn,
             swapTargets,
             swapCallDatas,
             minOutputAmounts,
@@ -527,23 +554,26 @@ contract RebalanceExecutorSecurityTest is Test {
         address[] memory tokensIn = new address[](1);
         tokensIn[0] = address(tokenA);
 
+        uint256[] memory amountsIn = new uint256[](1);
+        amountsIn[0] = 100 ether;
+
         // 1. First fails on DEX whitelist
         vm.expectRevert(abi.encodeWithSelector(RebalanceExecutor.UnapprovedDEX.selector, maliciousDEX));
-        executor.rebalance(address(delegationManager), 0, tokensIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
+        executor.rebalance(address(delegationManager), 0, tokensIn, amountsIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
 
         // 2. Approve DEX, now fails on slippage (set to 0)
         executor.setDEXApproval(maliciousDEX, true);
         minOutputAmounts[0] = 0;
 
         vm.expectRevert(RebalanceExecutor.InsufficientSlippageProtection.selector);
-        executor.rebalance(address(delegationManager), 0, tokensIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
+        executor.rebalance(address(delegationManager), 0, tokensIn, amountsIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
 
         // 3. Fix slippage, now fails on pause
         minOutputAmounts[0] = 1 ether;
         executor.pause();
 
         vm.expectRevert(RebalanceExecutor.ContractPaused.selector);
-        executor.rebalance(address(delegationManager), 0, tokensIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
+        executor.rebalance(address(delegationManager), 0, tokensIn, amountsIn, swapTargets, swapCallDatas, minOutputAmounts, new uint256[](swapTargets.length), permissionContexts, modes);
 
         // 4. Unpause - should pass security checks (may fail on other validations)
         executor.unpause();

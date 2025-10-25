@@ -33,9 +33,17 @@ export class StrategiesService {
     }
 
     // Get blockchain client
-    // Map chainId to chain name: 10143 = Monad Testnet, 10200 = Monad Mainnet
-    const MONAD_CHAIN_IDS = [10200, 10143];
-    const chainName = MONAD_CHAIN_IDS.includes(dto.chainId) ? 'monad' : 'base';
+    // Map chainId to chain name
+    let chainName: 'monad' | 'base-sepolia' | 'base-mainnet';
+    if (dto.chainId === 10143) {
+      chainName = 'monad';
+    } else if (dto.chainId === 84532) {
+      chainName = 'base-sepolia';
+    } else if (dto.chainId === 8453) {
+      chainName = 'base-mainnet';
+    } else {
+      throw new BadRequestException(`Unsupported chainId: ${dto.chainId}`);
+    }
     const client = this.chain.getPublicClient(chainName);
 
     // Get StrategyRegistry contract address

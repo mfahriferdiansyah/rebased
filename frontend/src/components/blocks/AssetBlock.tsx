@@ -87,10 +87,20 @@ export function AssetBlock({
       >
         <img
           src={getChainLogoUrl(block.data.chainId)}
-          alt={block.data.chainId === 10143 ? 'Monad' : 'Base'}
+          alt={
+            block.data.chainId === 10143
+              ? 'Monad'
+              : block.data.chainId === 8453
+              ? 'Base Mainnet'
+              : 'Base Sepolia'
+          }
           className="w-3 h-3 rounded-full mr-1.5"
         />
-        {block.data.chainId === 10143 ? 'Monad' : 'Base'}
+        {block.data.chainId === 10143
+          ? 'Monad'
+          : block.data.chainId === 8453
+          ? 'Base Mainnet'
+          : 'Base Sepolia'}
       </Badge>
 
       {/* Header */}

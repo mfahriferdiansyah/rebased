@@ -160,7 +160,11 @@ export function DelegationManagerModal({
                       {/* Chain & Strategy */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="text-xs">
-                          {delegation.chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia'}
+                          {delegation.chainId === 10143
+                            ? 'Monad Testnet'
+                            : delegation.chainId === 8453
+                            ? 'Base Mainnet'
+                            : 'Base Sepolia'}
                         </Badge>
                         {delegation.strategy && (
                           <div className="text-xs text-gray-600">

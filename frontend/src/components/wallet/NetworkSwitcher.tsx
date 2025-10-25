@@ -6,16 +6,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { monadTestnet, baseSepoliaTestnet, getChainById } from '@/lib/chains';
+import { supportedChains, getChainById } from '@/lib/chains';
 import { toast } from 'sonner';
 import { getChainLogoUrl } from '@/lib/utils/token-logo';
 
 /**
  * Network Switcher Component
  *
- * Allows switching between supported chains:
- * - Monad Testnet
- * - Base Sepolia
+ * Dynamically displays all supported chains from chains.ts configuration
+ * PRODUCTION: Only Base Mainnet
+ * DEVELOPMENT: Multiple chains if enabled
  */
 export function NetworkSwitcher() {
   const chainId = useChainId();
@@ -52,6 +52,27 @@ export function NetworkSwitcher() {
     return name.replace(' Testnet', '').replace(' Sepolia', '');
   };
 
+  // If only one chain is supported, show it without dropdown (production mode)
+  if (supportedChains.length === 1) {
+    return (
+      <div className="h-9 px-3 py-2 border border-gray-300 bg-white rounded-md">
+        <div className="flex items-center gap-2">
+          {chainId && (
+            <img
+              src={getChainLogoUrl(chainId)}
+              alt={currentChain?.name || 'Network'}
+              className="w-4 h-4 rounded-full flex-shrink-0"
+            />
+          )}
+          <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+            {getShortName(currentChain?.name)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Multiple chains - show dropdown (development mode)
   return (
     <Select
       value={chainId?.toString()}
@@ -80,27 +101,18 @@ export function NetworkSwitcher() {
       </SelectTrigger>
 
       <SelectContent>
-        <SelectItem value={monadTestnet.id.toString()}>
-          <div className="flex items-center gap-2">
-            <img
-              src={getChainLogoUrl(monadTestnet.id)}
-              alt="Monad Testnet"
-              className="w-4 h-4 rounded-full"
-            />
-            <span className="text-sm">Monad Testnet</span>
-          </div>
-        </SelectItem>
-
-        <SelectItem value={baseSepoliaTestnet.id.toString()}>
-          <div className="flex items-center gap-2">
-            <img
-              src={getChainLogoUrl(baseSepoliaTestnet.id)}
-              alt="Base Sepolia"
-              className="w-4 h-4 rounded-full"
-            />
-            <span className="text-sm">Base Sepolia</span>
-          </div>
-        </SelectItem>
+        {supportedChains.map((chain) => (
+          <SelectItem key={chain.id} value={chain.id.toString()}>
+            <div className="flex items-center gap-2">
+              <img
+                src={getChainLogoUrl(chain.id)}
+                alt={chain.name}
+                className="w-4 h-4 rounded-full"
+              />
+              <span className="text-sm">{chain.name}</span>
+            </div>
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   );

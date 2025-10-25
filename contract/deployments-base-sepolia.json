@@ -1,0 +1,15 @@
+{
+  "base-sepolia": {
+    "pythOracle": "0x324b6E527ffc765B2A2Fd6B9133dA0FF8d31d6Fc",
+    "pythOracleImpl": "0xd31A48282CFf3E8f7Ea0b234616833620575DaA8",
+    "rebalancerConfig": "0x7E2fcCDC61240f60fE6bDDC7074d07CB6d3E871B",
+    "rebalancerConfigImpl": "0x20F69Bb9f5994D753E0773f5df3d6453445e8273",
+    "uniswapHelper": "0x992ED7c0c95f50837dF3ED4822006159E04d16CC",
+    "uniswapHelperImpl": "0xD28a5bc42eB8E1e87f82F86D7e612DDb092D9723",
+    "delegationManager": "0x0b3abc9f2d6e8ad9cDE628918A4b0f061210Ad56",
+    "strategyRegistry": "0xC3196C8c08EaBcc0C70494F3CAD42C8e64B229aD",
+    "strategyRegistryImpl": "0x2aE21cdE8B080B7b73302dbD8D6f5c5c3eCee360",
+    "rebalanceExecutor": "0x47F004c6e31B8783a17EdFc42211fd136e9C5030",
+    "rebalanceExecutorImpl": "0xCbAC9A3B76b299708757b1aa8Ec0834bDf82d567"
+  }
+}

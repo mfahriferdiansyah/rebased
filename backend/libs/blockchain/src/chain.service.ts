@@ -12,7 +12,7 @@ import {
   Account,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { monadTestnet, baseSepoliaTestnet, SupportedChain, getChainById } from './chains';
+import { monadTestnet, baseSepolia, baseMainnet, SupportedChain, getChainById } from './chains';
 
 interface ChainClients {
   public: PublicClient;
@@ -68,30 +68,56 @@ export class ChainService implements OnModuleInit {
       this.logger.error('❌ Failed to initialize Monad client', error);
     }
 
-    // Initialize Base
+    // Initialize Base Sepolia
     try {
-      const baseRpc = this.config.get<string>('blockchain.base.rpcUrl');
-      if (baseRpc) {
+      const baseSepoliaRpc = this.config.get<string>('blockchain.base-sepolia.rpcUrl');
+      if (baseSepoliaRpc) {
         const publicClient = createPublicClient({
-          chain: baseSepoliaTestnet,
-          transport: http(baseRpc),
+          chain: baseSepolia,
+          transport: http(baseSepoliaRpc),
         });
 
         const walletClient = createWalletClient({
-          chain: baseSepoliaTestnet,
-          transport: http(baseRpc),
+          chain: baseSepolia,
+          transport: http(baseSepoliaRpc),
           account: this.account,
         });
 
-        this.clients.set('base', {
+        this.clients.set('base-sepolia', {
           public: publicClient as any,
           wallet: walletClient as any,
-          chain: baseSepoliaTestnet,
+          chain: baseSepolia,
         });
         this.logger.log('✅ Base Sepolia client initialized');
       }
     } catch (error) {
-      this.logger.error('❌ Failed to initialize Base client', error);
+      this.logger.error('❌ Failed to initialize Base Sepolia client', error);
+    }
+
+    // Initialize Base Mainnet
+    try {
+      const baseMainnetRpc = this.config.get<string>('blockchain.base-mainnet.rpcUrl');
+      if (baseMainnetRpc) {
+        const publicClient = createPublicClient({
+          chain: baseMainnet,
+          transport: http(baseMainnetRpc),
+        });
+
+        const walletClient = createWalletClient({
+          chain: baseMainnet,
+          transport: http(baseMainnetRpc),
+          account: this.account,
+        });
+
+        this.clients.set('base-mainnet', {
+          public: publicClient as any,
+          wallet: walletClient as any,
+          chain: baseMainnet,
+        });
+        this.logger.log('✅ Base Mainnet client initialized');
+      }
+    } catch (error) {
+      this.logger.error('❌ Failed to initialize Base Mainnet client', error);
     }
 
     this.logger.log(`Blockchain clients initialized for ${this.clients.size} chains`);

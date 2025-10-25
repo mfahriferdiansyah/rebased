@@ -13,6 +13,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useDelegation } from '@/hooks/useDelegation';
 import { getBotExecutorAddress } from '@/lib/utils/delegation-signatures';
 import { Loader2, Info, Shield, Wallet } from 'lucide-react';
+import { supportedChains, defaultChain } from '@/lib/chains';
 
 interface CreateDelegationFormProps {
   chainId?: number;
@@ -28,7 +29,7 @@ export function CreateDelegationForm({
   const { createDelegation, creating, isReady } = useDelegation();
 
   const [selectedChainId, setSelectedChainId] = useState<number>(
-    defaultChainId || 10143
+    defaultChainId || defaultChain.id
   );
   const [useCustomDelegate, setUseCustomDelegate] = useState(false);
   const [customDelegateAddress, setCustomDelegateAddress] = useState('');
@@ -118,13 +119,17 @@ export function CreateDelegationForm({
         <Select
           value={selectedChainId.toString()}
           onValueChange={handleChainChange}
+          disabled={supportedChains.length === 1}
         >
           <SelectTrigger id="chain">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="10143">Monad Testnet</SelectItem>
-            <SelectItem value="84532">Base Sepolia</SelectItem>
+            {supportedChains.map((chain) => (
+              <SelectItem key={chain.id} value={chain.id.toString()}>
+                {chain.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <div className="text-xs text-gray-500 mt-1">

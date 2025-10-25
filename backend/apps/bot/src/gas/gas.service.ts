@@ -69,7 +69,7 @@ export class GasService {
   async updateGasPrices() {
     try {
       const monadGas = await this.fetchGasPrice('monad');
-      const baseGas = await this.fetchGasPrice('base');
+      const baseGas = await this.fetchGasPrice('base-mainnet');
 
       // Save to database for historical tracking
       await this.prisma.gasPrice.createMany({

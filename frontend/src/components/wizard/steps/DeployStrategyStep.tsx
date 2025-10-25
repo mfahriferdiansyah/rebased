@@ -4,6 +4,7 @@ import { AlertCircle, Rocket, Loader2, CheckCircle2, ExternalLink } from 'lucide
 import { useStrategy } from '@/hooks/useStrategy';
 import { strategiesApi } from '@/lib/api/strategies';
 import { useAuth } from '@/hooks/useAuth';
+import { useEnsureChain } from '@/hooks/useEnsureChain';
 import type { Strategy } from '@/lib/types/strategy';
 import type { Address } from 'viem';
 
@@ -37,6 +38,7 @@ export function DeployStrategyStep({
 }: DeployStrategyStepProps) {
   const { convertCanvasToDto } = useStrategy(chainId);
   const { getBackendToken } = useAuth();
+  const ensureChain = useEnsureChain();
   const [deploying, setDeploying] = useState(false);
   const [deployedTxHash, setDeployedTxHash] = useState<string | null>(null);
   const [savedStrategyId, setSavedStrategyId] = useState<string | null>(null);
@@ -47,6 +49,15 @@ export function DeployStrategyStep({
     setDeploying(true);
 
     try {
+      // Step 0: Ensure user is on correct chain
+      console.log('🔗 Step 0: Checking network...');
+      const switched = await ensureChain(chainId);
+      if (!switched) {
+        setError('Network switch required. Please switch to the correct network to continue.');
+        setDeploying(false);
+        return;
+      }
+
       // Step 1: Validate and convert canvas strategy to DTO
       const dto = convertCanvasToDto(strategy, chainId);
       if (!dto) {
@@ -189,7 +200,13 @@ export function DeployStrategyStep({
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Chain:</span>
-            <span>{chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia'}</span>
+            <span>
+              {chainId === 10143
+                ? 'Monad Testnet'
+                : chainId === 8453
+                ? 'Base Mainnet'
+                : 'Base Sepolia'}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">DeleGator:</span>

@@ -13,13 +13,21 @@ export const CONTRACTS = {
     config: process.env.MONAD_CONFIG as `0x${string}`,
     uniswapV2Router: process.env.UNISWAP_V2_ROUTER_MONAD as `0x${string}`,
   },
-  base: {
+  'base-sepolia': {
     registry: process.env.BASE_REGISTRY as `0x${string}`,
     executor: process.env.BASE_EXECUTOR as `0x${string}`,
     delegationManager: process.env.BASE_DELEGATION_MANAGER as `0x${string}`,
     oracle: process.env.BASE_ORACLE as `0x${string}`,
     uniswapHelper: process.env.BASE_UNISWAP_HELPER as `0x${string}`,
     config: process.env.BASE_CONFIG as `0x${string}`,
+  },
+  'base-mainnet': {
+    registry: process.env.BASE_MAINNET_REGISTRY as `0x${string}`,
+    executor: process.env.BASE_MAINNET_EXECUTOR as `0x${string}`,
+    delegationManager: process.env.BASE_MAINNET_DELEGATION_MANAGER as `0x${string}`,
+    oracle: process.env.BASE_MAINNET_ORACLE as `0x${string}`,
+    uniswapHelper: process.env.BASE_MAINNET_UNISWAP_HELPER as `0x${string}`,
+    config: process.env.BASE_MAINNET_CONFIG as `0x${string}`,
   },
 } as const;
 

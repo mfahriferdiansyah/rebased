@@ -3,7 +3,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { SiweMessage } from 'siwe';
 import { authApi } from '@/lib/api/auth';
 import { useToast } from '@/hooks/use-toast';
-import { monadTestnet, baseSepoliaTestnet } from '@/lib/chains';
+import { defaultChain } from '@/lib/chains';
 import { toast as sonnerToast } from 'sonner';
 
 /**
@@ -122,6 +122,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsAuthenticating(true);
 
       console.log('🔐 Starting SIWE flow for:', userAddress);
+
+      // Step 0: Ensure user is on correct chain before SIWE (using Privy wallet)
+      console.log('0️⃣ Checking network...');
+
+      // Extract numeric chain ID from Privy's format (e.g., "eip155:8453" -> 8453)
+      const currentChainId = wallet.chainId?.includes(':')
+        ? parseInt(wallet.chainId.split(':')[1])
+        : parseInt(wallet.chainId || '0');
+
+      if (currentChainId !== defaultChain.id) {
+        console.log(`   Current: ${currentChainId}, Target: ${defaultChain.id} - switching...`);
+
+        const switchToast = sonnerToast.loading('Switching network...', {
+          description: `Please approve the network switch to ${defaultChain.name}`,
+        });
+
+        try {
+          await wallet.switchChain(defaultChain.id);
+          sonnerToast.success('Network switched', {
+            id: switchToast,
+            description: `Successfully switched to ${defaultChain.name}`,
+          });
+          console.log('   ✅ Network switched successfully');
+        } catch (switchError: any) {
+          sonnerToast.error('Network switch required', {
+            id: switchToast,
+            description: `Please switch to ${defaultChain.name} to continue`,
+          });
+          console.error('   ❌ Network switch failed:', switchError);
+          throw new Error('Network switch required. Please switch to Base Mainnet to sign in.');
+        }
+      } else {
+        console.log(`   ✅ Already on correct network (${defaultChain.name})`);
+      }
 
       // Step 1: Get nonce from backend
       console.log('1️⃣ Getting nonce from backend...');

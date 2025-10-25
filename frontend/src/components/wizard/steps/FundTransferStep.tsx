@@ -115,6 +115,8 @@ export function FundTransferStep({
             delegatorBalance = delegatorNativeBalance?.value || 0n;
           } else {
             eoaBalance = await getTokenBalance(token.address, userAddress, token.decimals);
+            // Add 500ms delay between RPC calls to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
             delegatorBalance = await getTokenBalance(token.address, delegatorAddress, token.decimals);
           }
         } catch (err) {

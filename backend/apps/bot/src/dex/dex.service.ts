@@ -33,12 +33,20 @@ interface Quote1inch {
 interface Quote0x {
   sellAmount: string;
   buyAmount: string;
-  to: string;
-  data: string;
-  value: string;
-  gas: string;
-  gasPrice: string;
-  estimatedPriceImpact: string;
+  transaction: {
+    to: string;
+    data: string;
+    value: string;
+    gas: string;
+    gasPrice: string;
+  };
+  estimatedPriceImpact?: string;
+  fees?: {
+    zeroExFee?: {
+      amount: string;
+      token: string;
+    };
+  };
 }
 
 interface ParaswapPriceRoute {
@@ -84,7 +92,7 @@ export class DexService {
     private readonly monorail: MonorailService,
   ) {
     // 1inch client with auth
-    const api1inchKey = this.config.get<string>('dex.1inchApiKey');
+    const api1inchKey = this.config.get<string>('dex.oneinchApiKey');
     this.axios1inch = axios.create({
       baseURL: 'https://api.1inch.dev',
       headers: api1inchKey ? { Authorization: `Bearer ${api1inchKey}` } : {},
@@ -92,10 +100,13 @@ export class DexService {
     });
 
     // 0x client with auth
-    const api0xKey = this.config.get<string>('dex.0xApiKey');
+    const api0xKey = this.config.get<string>('dex.zeroxApiKey');
     this.axios0x = axios.create({
       baseURL: 'https://api.0x.org',
-      headers: api0xKey ? { '0x-api-key': api0xKey } : {},
+      headers: api0xKey ? {
+        '0x-api-key': api0xKey,
+        '0x-version': 'v2',
+      } : {},
       timeout: 10000,
     });
 
@@ -210,6 +221,7 @@ export class DexService {
         const wrapData = {
           fromToken: NATIVE_TOKEN,
           toToken: WMON_ADDRESS,
+          fromAmount: swap.fromAmount,
           target: WMON_ADDRESS, // WMON contract
           data: '0xd0e30db0', // deposit() function selector - WMON9.deposit() payable
           value: swap.fromAmount.toString(), // Amount of MON to wrap (needs contract support!)
@@ -246,6 +258,7 @@ export class DexService {
             swapData = {
               fromToken: wmonSwap.fromToken,
               toToken: wmonSwap.toToken,
+              fromAmount: wmonSwap.fromAmount,
               target: txData.target,
               data: txData.calldata,
               value: '0', // No native tokens for ERC-20 swap
@@ -281,6 +294,7 @@ export class DexService {
             swapData = {
               fromToken: wmonSwap.fromToken,
               toToken: wmonSwap.toToken,
+              fromAmount: wmonSwap.fromAmount,
               target: txData.target,
               data: txData.calldata,
               value: '0', // No native tokens for ERC-20 swap
@@ -398,8 +412,8 @@ export class DexService {
     // Get enabled aggregators
     const enabled1inch = this.config.get<boolean>('dex.enable1inch', true);
     const enabled0x = this.config.get<boolean>('dex.enable0x', true);
-    const enabledParaswap = this.config.get<boolean>('dex.enableParaswap', true);
-    const enabledUniswap = this.config.get<boolean>('dex.enableUniswap', true);
+    const enabledParaswap = this.config.get<boolean>('dex.enableParaSwap', false);
+    const enabledUniswap = this.config.get<boolean>('dex.fallbackUniswap', true);
 
     try {
       const allSwapData: any[] = [];
@@ -452,6 +466,7 @@ export class DexService {
           allSwapData.push({
             fromToken: swap.fromToken,
             toToken: swap.toToken,
+            fromAmount: swap.fromAmount,
             target: bestQuote.target,
             data: bestQuote.calldata,
             minOutput: bestQuote.toAmount,
@@ -459,11 +474,26 @@ export class DexService {
             priceImpact: bestQuote.priceImpact,
           });
         } else {
-          this.logger.error(
-            `No acceptable quotes found for swap ${swap.fromToken}->${swap.toToken}`,
+          // Instead of throwing and failing entire rebalancing, log warning and continue
+          this.logger.warn(
+            `No acceptable quotes found for swap ${swap.fromToken}->${swap.toToken}. ` +
+            `This swap will be skipped. Reasons: insufficient balance, no liquidity, or excessive price impact.`
           );
-          throw new Error(`No acceptable quotes for ${swap.fromToken}->${swap.toToken}`);
+          // Continue with other swaps instead of throwing
         }
+      }
+
+      // Check if we got at least some successful swaps
+      if (allSwapData.length === 0) {
+        this.logger.error('All swaps failed - no quotes available from any aggregator');
+        throw new Error('No valid swap quotes available for any tokens');
+      }
+
+      if (allSwapData.length < executionPlan.swaps.length) {
+        this.logger.warn(
+          `Partial rebalancing: ${allSwapData.length}/${executionPlan.swaps.length} swaps succeeded. ` +
+          `Some swaps were skipped due to validation failures or insufficient liquidity.`
+        );
       }
 
       return allSwapData;
@@ -485,8 +515,8 @@ export class DexService {
       // Rate limit check
       await this.rateLimit('1inch');
 
-      const chainId = chain === 'monad' ? 10143 : 84532;
-      const apiKey = this.config.get<string>('dex.1inchApiKey');
+      const chainId = chain === 'monad' ? 10143 : 8453; // Base Mainnet
+      const apiKey = this.config.get<string>('dex.oneinchApiKey');
 
       if (!apiKey) {
         this.logger.warn('1inch API key not configured');
@@ -532,7 +562,26 @@ export class DexService {
         priceImpact,
       };
     } catch (error) {
-      this.logger.error(`1inch quote failed: ${error.message}`);
+      // Handle specific error types gracefully
+      const errorMsg = error.response?.data?.description || error.message;
+
+      if (errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
+        this.logger.warn(
+          `1inch validation failed for ${swap.fromToken}→${swap.toToken}: ` +
+          `Insufficient balance or approval. Skipping this swap.`
+        );
+        return null;
+      }
+
+      if (errorMsg.includes('liquidity')) {
+        this.logger.warn(
+          `1inch insufficient liquidity for ${swap.fromToken}→${swap.toToken}. Skipping this swap.`
+        );
+        return null;
+      }
+
+      // For other errors, log and return null (allow other aggregators to try)
+      this.logger.error(`1inch quote failed for ${swap.fromToken}→${swap.toToken}: ${errorMsg}`);
       return null;
     }
   }
@@ -549,7 +598,7 @@ export class DexService {
       // Rate limit check
       await this.rateLimit('0x');
 
-      const apiKey = this.config.get<string>('dex.0xApiKey');
+      const apiKey = this.config.get<string>('dex.zeroxApiKey');
 
       if (!apiKey) {
         this.logger.warn('0x API key not configured');
@@ -564,14 +613,18 @@ export class DexService {
 
       this.logger.debug('Fetching 0x quote...');
 
+      // Map chain to chainId (monad already filtered out above)
+      const chainId = chain === 'base-sepolia' ? 84532 : 8453;
+
       const response = await this.axios0x.get<Quote0x>(
-        '/swap/v1/quote',
+        '/swap/allowance-holder/quote',
         {
           params: {
+            chainId: chainId.toString(),
             sellToken: swap.fromToken,
             buyToken: swap.toToken,
             sellAmount: swap.fromAmount.toString(),
-            takerAddress: userAccount,
+            taker: userAccount,
             slippagePercentage: '0.01', // 1%
           },
         },
@@ -579,7 +632,16 @@ export class DexService {
 
       const data = response.data;
 
-      const priceImpact = parseFloat(data.estimatedPriceImpact) * 100;
+      // Debug: Log the actual response
+      this.logger.debug(`0x API response: ${JSON.stringify(data)}`);
+
+      // Validate response has required fields
+      if (!data.buyAmount) {
+        this.logger.error(`0x API response missing buyAmount field. Full response: ${JSON.stringify(data)}`);
+        return null;
+      }
+
+      const priceImpact = data.estimatedPriceImpact ? parseFloat(data.estimatedPriceImpact) * 100 : 0;
 
       return {
         aggregator: '0x',
@@ -587,13 +649,48 @@ export class DexService {
         toToken: swap.toToken,
         fromAmount: swap.fromAmount,
         toAmount: BigInt(data.buyAmount),
-        target: data.to,
-        calldata: data.data,
-        estimatedGas: BigInt(data.gas),
+        target: data.transaction.to,
+        calldata: data.transaction.data,
+        estimatedGas: BigInt(data.transaction.gas),
         priceImpact,
       };
     } catch (error) {
-      this.logger.error(`0x quote failed: ${error.message}`);
+      // Handle specific error types gracefully
+      const errorMsg = error.response?.data?.message || error.response?.data?.reason || error.message;
+      const statusCode = error.response?.status;
+      const responseData = error.response?.data;
+
+      // Log detailed error info
+      this.logger.debug(`0x API error - Status: ${statusCode}, Response: ${JSON.stringify(responseData)}`);
+
+      // Handle specific HTTP error codes
+      if (statusCode === 401 || statusCode === 403) {
+        this.logger.error(`0x API authentication failed. Check ZEROX_API_KEY. Status: ${statusCode}`);
+        return null;
+      }
+
+      if (statusCode === 400) {
+        this.logger.warn(`0x bad request for ${swap.fromToken}→${swap.toToken}: ${errorMsg}`);
+        return null;
+      }
+
+      if (errorMsg.includes('SWAP_VALIDATION_FAILED')) {
+        this.logger.warn(
+          `0x validation failed for ${swap.fromToken}→${swap.toToken}: ` +
+          `Likely insufficient balance or approval. Skipping this swap.`
+        );
+        return null;
+      }
+
+      if (errorMsg.includes('INSUFFICIENT_ASSET_LIQUIDITY')) {
+        this.logger.warn(
+          `0x insufficient liquidity for ${swap.fromToken}→${swap.toToken}. Skipping this swap.`
+        );
+        return null;
+      }
+
+      // For other errors, log and return null (allow other aggregators to try)
+      this.logger.error(`0x quote failed for ${swap.fromToken}→${swap.toToken}: ${errorMsg}`);
       return null;
     }
   }
@@ -610,7 +707,7 @@ export class DexService {
       // Rate limit check
       await this.rateLimit('paraswap');
 
-      const network = chain === 'monad' ? 10143 : 84532;
+      const network = chain === 'monad' ? 10143 : 8453; // Base Mainnet
 
       this.logger.debug('Fetching ParaSwap quote...');
 
@@ -671,7 +768,26 @@ export class DexService {
         priceImpact,
       };
     } catch (error) {
-      this.logger.error(`ParaSwap quote failed: ${error.message}`);
+      // Handle specific error types gracefully
+      const errorMsg = error.response?.data?.error || error.message;
+
+      if (errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
+        this.logger.warn(
+          `ParaSwap validation failed for ${swap.fromToken}→${swap.toToken}: ` +
+          `Insufficient balance or approval. Skipping this swap.`
+        );
+        return null;
+      }
+
+      if (errorMsg.includes('liquidity') || errorMsg.includes('ESTIMATED_LOSS_GREATER_THAN_MAX_IMPACT')) {
+        this.logger.warn(
+          `ParaSwap insufficient liquidity for ${swap.fromToken}→${swap.toToken}. Skipping this swap.`
+        );
+        return null;
+      }
+
+      // For other errors, log and return null (allow other aggregators to try)
+      this.logger.error(`ParaSwap quote failed for ${swap.fromToken}→${swap.toToken}: ${errorMsg}`);
       return null;
     }
   }

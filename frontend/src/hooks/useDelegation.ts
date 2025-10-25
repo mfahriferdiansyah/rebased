@@ -6,7 +6,7 @@ import { delegationsApi } from '@/lib/api/delegations';
 import {
   signDelegation,
   generateDelegationSalt,
-  createEmptyCaveats,
+  createTimestampCaveat,
   createRootAuthority,
   getBotExecutorAddress,
 } from '@/lib/utils/delegation-signatures';
@@ -18,6 +18,7 @@ import type {
 } from '@/lib/types/delegation';
 import { useToast } from './use-toast';
 import { useAuth } from './useAuth';
+import { useEnsureChain } from './useEnsureChain';
 
 /**
  * Delegation Hook - Production Quality
@@ -33,6 +34,7 @@ export function useDelegation(chainId?: number) {
   const { isPrivyAuthenticated, getBackendToken, isBackendAuthenticated } = useAuth();
   const { wallets } = useWallets();
   const { toast } = useToast();
+  const ensureChain = useEnsureChain();
 
   // State
   const [delegations, setDelegations] = useState<Delegation[]>([]);
@@ -192,6 +194,17 @@ export function useDelegation(chainId?: number) {
       try {
         setCreating(true);
 
+        // 0. Ensure user is on correct chain before signing
+        const switched = await ensureChain(selectedChainId);
+        if (!switched) {
+          toast({
+            title: 'Network switch required',
+            description: 'Please switch to the correct network to continue',
+            variant: 'destructive',
+          });
+          return null;
+        }
+
         // Use default bot executor if not provided
         const finalDelegateAddress = delegateAddress || getBotExecutorAddress(selectedChainId);
 
@@ -200,13 +213,19 @@ export function useDelegation(chainId?: number) {
           delegate: finalDelegateAddress,
           delegator: delegatorAddress || userAddress, // DeleGator smart account or EOA
           authority: createRootAuthority(), // Root delegation (no parent)
-          caveats: createEmptyCaveats(), // No restrictions for MVP
+          caveats: [createTimestampCaveat(selectedChainId)], // TimestampEnforcer with 1 year expiry
           salt: generateDelegationSalt(), // Random 256-bit salt
           // NOTE: deadline removed - not part of MetaMask v1.3.0
         };
 
         // 2. Switch wallet to target chain
-        const chainName = selectedChainId === 10143 ? 'Monad Testnet' : 'Base Sepolia';
+        const chainName = selectedChainId === 10143
+          ? 'Monad Testnet'
+          : selectedChainId === 84532
+          ? 'Base Sepolia'
+          : selectedChainId === 8453
+          ? 'Base Mainnet'
+          : 'Unknown Chain';
         toast({
           title: 'Switching network',
           description: `Switching to ${chainName}...`,

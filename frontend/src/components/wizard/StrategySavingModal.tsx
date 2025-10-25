@@ -272,7 +272,12 @@ export function StrategySavingModal({
                   {strategy.blocks.filter(b => b.type === 'asset').length}
                 </div>
                 <div>
-                  <span className="font-medium">Chain:</span> {chainId === 10143 ? 'Monad' : 'Base'}
+                  <span className="font-medium">Chain:</span>{' '}
+                  {chainId === 10143
+                    ? 'Monad Testnet'
+                    : chainId === 8453
+                    ? 'Base Mainnet'
+                    : 'Base Sepolia'}
                 </div>
               </div>
             </div>

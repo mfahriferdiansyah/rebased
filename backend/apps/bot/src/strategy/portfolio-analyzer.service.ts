@@ -24,7 +24,17 @@ export class PortfolioAnalyzerService {
     userAddress: string,
     chainId: number,
   ): Promise<PortfolioState> {
-    const chainName = chainId === 10143 || chainId === 10200 ? 'monad' : 'base';
+    // Map chainId to SupportedChain
+    let chainName: 'monad' | 'base-sepolia' | 'base-mainnet';
+    if (chainId === 10143 || chainId === 10200) {
+      chainName = 'monad';
+    } else if (chainId === 84532) {
+      chainName = 'base-sepolia';
+    } else if (chainId === 8453) {
+      chainName = 'base-mainnet';
+    } else {
+      throw new Error(`Unsupported chainId: ${chainId}`);
+    }
     const assetBlocks = this.parser.getAssetBlocks(strategy);
     const targetWeights = this.parser.getTargetWeights(strategy);
 
@@ -168,7 +178,7 @@ export class PortfolioAnalyzerService {
       // Use Pyth oracle for real-time prices
       const price = await this.pythOracle.getTokenPrice(
         tokenAddress,
-        chainName as 'monad' | 'base',
+        chainName as 'monad' | 'base-sepolia' | 'base-mainnet',
       );
 
       this.logger.debug(`Pyth price for ${tokenAddress}: $${price.toFixed(2)}`);

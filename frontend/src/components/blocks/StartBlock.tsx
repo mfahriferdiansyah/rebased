@@ -104,7 +104,11 @@ export function StartBlock({
               </div>
               {/* Chain Badge - inline */}
               <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 flex-shrink-0">
-                {activeDelegation.chainId === 10143 ? 'Monad' : 'Base'}
+                {activeDelegation.chainId === 10143
+                  ? 'Monad'
+                  : activeDelegation.chainId === 8453
+                  ? 'Base Mainnet'
+                  : 'Base Sepolia'}
               </Badge>
             </>
           ) : (

@@ -233,6 +233,16 @@
         "internalType": "uint256"
       },
       {
+        "name": "tokensIn",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "amountsIn",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
         "name": "swapTargets",
         "type": "address[]",
         "internalType": "address[]"

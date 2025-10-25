@@ -176,6 +176,7 @@ export const StrategyRegistryABI = [
 // Contract addresses by chainId - Use environment variables
 // Deployed 2025-10-16 - Latest with MetaMask Integration
 export const STRATEGY_REGISTRY_ADDRESS: Record<number, `0x${string}`> = {
+  8453: (import.meta.env.VITE_BASE_MAINNET_STRATEGY_REGISTRY || '0x0000000000000000000000000000000000000000') as `0x${string}`, // Base Mainnet
   10143: (import.meta.env.VITE_MONAD_STRATEGY_REGISTRY || '0x0000000000000000000000000000000000000000') as `0x${string}`, // Monad testnet
   84532: (import.meta.env.VITE_BASE_STRATEGY_REGISTRY || '0x0000000000000000000000000000000000000000') as `0x${string}`, // Base Sepolia
 };

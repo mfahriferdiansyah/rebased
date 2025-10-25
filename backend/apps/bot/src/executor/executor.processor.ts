@@ -10,6 +10,7 @@ import { DexService } from '../dex/dex.service';
 import { GasService } from '../gas/gas.service';
 import { MevService } from '../mev/mev.service';
 import { StrategyEngineService } from '../strategy/strategy-engine.service';
+import { PythPushService } from '../pyth/pyth-push.service';
 import { encodeAbiParameters, parseAbiParameters, encodeFunctionData } from 'viem';
 import { RebalanceExecutorABI } from '../contracts/abis';
 import { CONTRACTS } from '../contracts/addresses';
@@ -27,6 +28,7 @@ export class ExecutorProcessor {
     private readonly dex: DexService,
     private readonly gas: GasService,
     private readonly mev: MevService,
+    private readonly pythPush: PythPushService,
   ) {}
 
   /**
@@ -35,7 +37,17 @@ export class ExecutorProcessor {
   @Process('execute-rebalance')
   async handleRebalance(job: Job<RebalanceJobData>) {
     const { strategyId, userAddress, chainId, drift } = job.data;
-    const chainName = chainId === 10143 ? 'monad' : 'base';
+    // Map chainId to SupportedChain
+    let chainName: 'monad' | 'base-sepolia' | 'base-mainnet';
+    if (chainId === 10143) {
+      chainName = 'monad';
+    } else if (chainId === 84532) {
+      chainName = 'base-sepolia';
+    } else if (chainId === 8453) {
+      chainName = 'base-mainnet';
+    } else {
+      throw new Error(`Unsupported chainId: ${chainId}`);
+    }
 
     this.logger.log(
       `Processing rebalance job ${job.id} for strategy ${strategyId} (drift: ${drift / 100}%)`,
@@ -92,13 +104,48 @@ export class ExecutorProcessor {
         throw new Error('Gas price too high');
       }
 
-      // 4. Get delegation
+      // 4. Hybrid Push: Ensure fresh prices for all tokens in portfolio
+      // Extract unique tokens from execution plan
+      const portfolioTokens: string[] = [];
+      if (Array.isArray(evaluation.executionPlan)) {
+        evaluation.executionPlan.forEach((action: any) => {
+          if (action.fromToken) portfolioTokens.push(action.fromToken);
+          if (action.toToken) portfolioTokens.push(action.toToken);
+        });
+      }
+      const uniqueTokens = Array.from(new Set(portfolioTokens));
+
+      if (uniqueTokens.length > 0) {
+        this.logger.log(
+          `Checking price staleness for ${uniqueTokens.length} tokens before rebalance...`,
+        );
+
+        try {
+          const pushResult = await this.pythPush.ensureFreshPrices(
+            uniqueTokens,
+            chainName,
+          );
+
+          if (pushResult.totalPushed > 0) {
+            this.logger.warn(
+              `⚡ Pushed ${pushResult.totalPushed} stale prices (cost: ${pushResult.cost} wei = ~$${(Number(pushResult.cost) / 1e18 * 3900).toFixed(4)})`,
+            );
+          } else {
+            this.logger.log('✓ All prices are fresh, no push needed');
+          }
+        } catch (error) {
+          this.logger.error('Failed to push prices, continuing anyway:', error);
+          // Don't fail rebalance if price push fails - contract has 1-year tolerance
+        }
+      }
+
+      // 5. Get delegation
       const delegation = strategy.delegations[0];
       if (!delegation) {
         throw new Error('No active delegation found');
       }
 
-      // 5. Get optimal swap routes from DEX aggregators
+      // 6. Get optimal swap routes from DEX aggregators
       // IMPORTANT: Pass DeleGator address NOT user EOA
       // Swaps must be sent to/from the DeleGator smart account where funds are stored!
       const swaps = await this.dex.getOptimalSwaps(
@@ -144,12 +191,13 @@ export class ExecutorProcessor {
       this.logger.debug(`userAccount (DeleGator): ${args[0]}`);
       this.logger.debug(`strategyId: ${args[1].toString()}`);
       this.logger.debug(`tokensIn (args[2]) (${args[2].length}): ${JSON.stringify(args[2])}`);
-      this.logger.debug(`swapTargets (args[3]) (${args[3].length}): ${JSON.stringify(args[3])}`);
-      this.logger.debug(`swapCallDatas (args[4]) (${args[4].length} swaps)`);
-      this.logger.debug(`minOutputAmounts (args[5]): ${args[5].map((x: bigint) => x.toString())}`);
-      this.logger.debug(`nativeValues (args[6]): ${args[6].map((x: bigint) => x.toString())}`);
-      this.logger.debug(`permissionContexts length (args[7]): ${args[7].length}`);
-      this.logger.debug(`modes (args[8]): ${JSON.stringify(args[8])}`);
+      this.logger.debug(`amountsIn (args[3]): ${args[3].map((x: bigint) => x.toString())}`);
+      this.logger.debug(`swapTargets (args[4]) (${args[4].length}): ${JSON.stringify(args[4])}`);
+      this.logger.debug(`swapCallDatas (args[5]) (${args[5].length} swaps)`);
+      this.logger.debug(`minOutputAmounts (args[6]): ${args[6].map((x: bigint) => x.toString())}`);
+      this.logger.debug(`nativeValues (args[7]): ${args[7].map((x: bigint) => x.toString())}`);
+      this.logger.debug(`permissionContexts length (args[8]): ${args[8].length}`);
+      this.logger.debug(`modes (args[9]): ${JSON.stringify(args[9])}`);
       this.logger.debug('================================');
 
       // 8. Debug mode: Send real transaction to capture events before revert
@@ -407,7 +455,7 @@ export class ExecutorProcessor {
     strategy: any,
     delegation: any,
     swaps: any[],
-    chainName: 'monad' | 'base',
+    chainName: 'monad' | 'base-sepolia' | 'base-mainnet',
   ): Promise<{
     args: any[];
     to: `0x${string}`;
@@ -453,6 +501,7 @@ export class ExecutorProcessor {
 
     // 2. Build swap data arrays
     const tokensIn: `0x${string}`[] = swaps.map((s) => s.fromToken as `0x${string}`); // Token being sold in each swap
+    const amountsIn: bigint[] = swaps.map((s) => BigInt(s.fromAmount)); // Amount being sold in each swap
     const swapTargets: `0x${string}`[] = swaps.map((s) => s.target as `0x${string}`);
     const swapCallDatas: `0x${string}`[] = swaps.map((s) => s.data as `0x${string}`);
     const minOutputAmounts: bigint[] = swaps.map((s) => BigInt(s.minOutput || 0));
@@ -486,7 +535,8 @@ export class ExecutorProcessor {
       args: [
         userAccount,
         strategyId,
-        tokensIn,          // NEW: Tokens being sold (for automatic approval)
+        tokensIn,          // Tokens being sold (for automatic approval)
+        amountsIn,         // Amounts of each token being sold
         swapTargets,
         swapCallDatas,
         minOutputAmounts,

@@ -31,7 +31,7 @@ export default () => ({
         delegationManager: process.env.MONAD_DELEGATION_MANAGER,
       },
     },
-    base: {
+    'base-sepolia': {
       rpcUrl: process.env.BASE_RPC_URL,
       chainId: 84532,
       startBlock: parseInt(process.env.BASE_START_BLOCK, 10) || 0,
@@ -42,6 +42,19 @@ export default () => ({
         uniswapHelper: process.env.BASE_UNISWAP_HELPER,
         config: process.env.BASE_CONFIG,
         delegationManager: process.env.BASE_DELEGATION_MANAGER,
+      },
+    },
+    'base-mainnet': {
+      rpcUrl: process.env.BASE_MAINNET_RPC_URL,
+      chainId: 8453,
+      startBlock: parseInt(process.env.BASE_MAINNET_START_BLOCK, 10) || 0,
+      contracts: {
+        registry: process.env.BASE_MAINNET_REGISTRY,
+        executor: process.env.BASE_MAINNET_EXECUTOR,
+        oracle: process.env.BASE_MAINNET_ORACLE,
+        uniswapHelper: process.env.BASE_MAINNET_UNISWAP_HELPER,
+        config: process.env.BASE_MAINNET_CONFIG,
+        delegationManager: process.env.BASE_MAINNET_DELEGATION_MANAGER,
       },
     },
   },

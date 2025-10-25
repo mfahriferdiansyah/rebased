@@ -11,6 +11,7 @@ interface IPythOracle {
     event PriceFeedRemoved(address indexed token);
     event MaxPriceAgeUpdated(uint256 oldValue, uint256 newValue);
     event MaxConfidenceRatioUpdated(uint256 oldValue, uint256 newValue);
+    event PythContractUpdated(address indexed oldContract, address indexed newContract);
 
     // Errors
     error NoFeedConfigured(address token);
@@ -22,6 +23,7 @@ interface IPythOracle {
     function removePriceFeed(address token) external;
     function setMaxPriceAge(uint256 seconds_) external;
     function setMaxConfidenceRatio(uint256 bps) external;
+    function setPythContract(address pythContract_) external;
 
     // Price queries
     function getPrice(address token) external view returns (uint256 price);
@@ -33,4 +35,5 @@ interface IPythOracle {
     function getPythContract() external view returns (address);
     function oracle() external view returns (address);
     function pythContract() external view returns (address);
+    function priceFeeds(address token) external view returns (bytes32);
 }

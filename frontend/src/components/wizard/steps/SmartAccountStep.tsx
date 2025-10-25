@@ -16,11 +16,12 @@ import {
 import { useSmartAccount } from '@/hooks/useSmartAccount';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useWalletClient } from 'wagmi';
-import { monadTestnet, baseSepoliaTestnet } from '@/lib/chains';
+import { supportedChains, getChainById } from '@/lib/chains';
 import { toast } from 'sonner';
 import type { Address } from 'viem';
 
 interface SmartAccountStepProps {
+  chainId: number;
   onNext: (delegatorAddress: Address) => void;
   onCancel: () => void;
 }
@@ -33,7 +34,7 @@ interface SmartAccountStepProps {
  * - Provides option to create one if not found
  * - Proceeds to next step once DeleGator is confirmed
  */
-export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
+export function SmartAccountStep({ chainId, onNext, onCancel }: SmartAccountStepProps) {
   const { authenticated, ready: privyReady } = usePrivy();
   const { wallets } = useWallets();
   const { data: wagmiWalletClient } = useWalletClient(); // For checking if wagmi client is ready
@@ -50,6 +51,12 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const networkSwitchTriggeredRef = useRef(false);
 
+  // Get the target chain from the strategy's chainId
+  const targetChain = getChainById(chainId);
+  if (!targetChain) {
+    console.error(`Unsupported chain ID: ${chainId}`);
+  }
+
   // Get wallet and address from Privy (works on ANY network)
   const wallet = wallets[0];
   const userAddress = wallet?.address as Address | undefined;
@@ -60,16 +67,21 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
     ? parseInt(walletChainId.split(':')[1])
     : walletChainId ? parseInt(walletChainId) : undefined;
 
-  // Network validation - check if on supported network (Base or Monad)
-  const isSupportedNetwork = chainIdNumber === baseSepoliaTestnet.id || chainIdNumber === monadTestnet.id;
+  // Network validation - check if user is on the target network
+  const isSupportedNetwork = chainIdNumber === chainId;
   const isOnWrongNetwork = privyReady && authenticated && wallet && !isSupportedNetwork;
 
   /**
-   * Handle network switch to Base Sepolia using Privy's wallet.switchChain()
+   * Handle network switch using Privy's wallet.switchChain()
    */
   const handleNetworkSwitch = async () => {
     if (!wallet) {
       console.error('No wallet available for network switch');
+      return;
+    }
+
+    if (!targetChain) {
+      console.error('Target chain not found');
       return;
     }
 
@@ -78,10 +90,10 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       console.log('🔄 Switching network using Privy wallet.switchChain()...');
 
       // Use Privy's native wallet.switchChain() method
-      await wallet.switchChain(baseSepoliaTestnet.id);
+      await wallet.switchChain(targetChain.id);
 
       toast.success('Network switched', {
-        description: `Switched to ${baseSepoliaTestnet.name}`,
+        description: `Switched to ${targetChain.name}`,
       });
 
       // Reset flag on successful switch
@@ -98,7 +110,7 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
       // Only show error toast if not a user rejection
       if (!error.message?.includes('User rejected') && !error.message?.includes('rejected') && !error.message?.includes('User denied')) {
         toast.error('Network switch failed', {
-          description: error.message || 'Please switch to Base Sepolia manually in your wallet',
+          description: error.message || `Please switch to ${targetChain.name} manually in your wallet`,
         });
       }
     } finally {
@@ -234,25 +246,29 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
 
   // Wrong network - prompt to switch
   if (isOnWrongNetwork) {
+    // Build supported networks list for display
+    const supportedNetworkNames = supportedChains.map(chain => chain.name).join(' or ');
+    const supportedChainIds = supportedChains.map(chain => chain.id).join(', ');
+
     return (
       <div className="space-y-4">
         <div className="border rounded-lg p-6 bg-orange-50 border-orange-200">
           <div className="flex items-start gap-3">
             <Network className="w-6 h-6 text-orange-600 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-medium text-orange-900">Unsupported Network</h3>
+              <h3 className="font-medium text-orange-900">Wrong Network</h3>
               <p className="text-sm text-orange-700 mt-1">
-                Please switch to Base Sepolia or Monad Testnet to continue.
+                This strategy requires {targetChain?.name || 'the selected network'}. Please switch networks to continue.
               </p>
 
               <div className="mt-4 space-y-2 text-sm text-orange-800">
                 <div className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
-                  <span>Supported Networks: <strong>Base Sepolia or Monad Testnet</strong></span>
+                  <span>Required Network: <strong>{targetChain?.name || 'Unknown'}</strong></span>
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-600 mt-1.5" />
-                  <span>Supported Chain IDs: <strong>{baseSepoliaTestnet.id}, {monadTestnet.id}</strong></span>
+                  <span>Required Chain ID: <strong>{chainId}</strong></span>
                 </div>
                 {chainIdNumber && (
                   <div className="flex items-start gap-2">
@@ -269,7 +285,7 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
           <Info className="w-4 h-4" />
           <AlertDescription className="text-sm">
             You can switch networks via Privy's wallet selector (click your address),
-            or use the button below to switch to Base Sepolia (default network).
+            or use the button below to switch to {targetChain?.name || 'the required network'}.
           </AlertDescription>
         </Alert>
 
@@ -283,7 +299,7 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
           </Button>
           <Button
             onClick={handleNetworkSwitch}
-            disabled={isSwitching}
+            disabled={isSwitching || !targetChain}
             className="bg-gray-900 hover:bg-gray-800"
           >
             {isSwitching ? (
@@ -294,7 +310,7 @@ export function SmartAccountStep({ onNext, onCancel }: SmartAccountStepProps) {
             ) : (
               <>
                 <Network className="w-4 h-4 mr-2" />
-                Switch to Base Sepolia
+                Switch to {targetChain?.name || 'Network'}
               </>
             )}
           </Button>

@@ -13,10 +13,10 @@ export interface Caveat {
 // Core delegation structure (MetaMask Delegation Framework v1.3.0)
 // NOTE: v1.3.0 does NOT include 'deadline' field
 export interface DelegationData {
-  delegate: `0x${string}`;   // ANY_DELEGATE (0xa11) - allows RebalanceExecutor to redeem
+  delegate: `0x${string}`;   // RebalanceExecutor address (specific delegate, NOT ANY_DELEGATE)
   delegator: `0x${string}`;  // DeleGator smart account address
   authority: `0x${string}`;  // Parent delegation hash (0x0 for root)
-  caveats: Caveat[];         // Restrictions array
+  caveats: Caveat[];         // Restrictions array (TimestampEnforcer with 1 year expiry)
   salt: bigint;              // Unique salt to prevent collision
   // deadline field removed - not part of MetaMask v1.3.0
 }

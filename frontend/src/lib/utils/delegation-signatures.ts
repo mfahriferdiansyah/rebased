@@ -31,6 +31,7 @@ export function getDelegationManagerAddress(chainId: number): `0x${string}` {
   const addresses: Record<number, `0x${string}`> = {
     10143: (import.meta.env.VITE_MONAD_DELEGATION_MANAGER || '0x0000000000000000000000000000000000000000') as `0x${string}`,
     84532: (import.meta.env.VITE_BASE_DELEGATION_MANAGER || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    8453: (import.meta.env.VITE_BASE_MAINNET_DELEGATION_MANAGER || '0x0000000000000000000000000000000000000000') as `0x${string}`,
   };
 
   const address = addresses[chainId];
@@ -107,7 +108,8 @@ export async function signDelegation(
 
 /**
  * Create empty caveats array (no restrictions)
- * For MVP, delegations have no caveats - full trust to bot
+ * @deprecated Legacy function - Use createTimestampCaveat() instead
+ * Production delegations should use TimestampEnforcer with 1 year expiry
  */
 export function createEmptyCaveats(): Caveat[] {
   return [];
@@ -186,17 +188,68 @@ export function createValueLimitCaveat(
 }
 
 /**
- * Get delegate address for creating "open delegations"
- * Returns MetaMask's ANY_DELEGATE constant (createOpenDelegation pattern)
+ * Get RebalanceExecutor contract address for delegation
+ * Returns the specific delegate address for bot authorization architecture
  *
- * This allows RebalanceExecutor contract to call DelegationManager.redeemDelegations()
- * on behalf of the bot, while keeping all validation logic on-chain in RebalanceExecutor.
- *
- * @see https://docs.metamask.io/delegation-toolkit/reference/delegation/#createopendelegation
- * @see DelegationManager.sol:40-41 - ANY_DELEGATE = address(0xa11)
+ * Architecture v1.4.0:
+ * - Specific delegate: RebalanceExecutor (NOT ANY_DELEGATE)
+ * - Bot authorization: Only authorized bot EOA can call RebalanceExecutor
+ * - Security: Bot auth + Business logic + Delegation signature
  */
 export function getBotExecutorAddress(chainId: number): `0x${string}` {
-  // MetaMask's ANY_DELEGATE constant - allows any caller to redeem delegation
-  // This is the standard pattern for "open delegations" in MetaMask Delegation Framework
-  return '0x0000000000000000000000000000000000000a11';
+  const addresses: Record<number, `0x${string}`> = {
+    10143: (import.meta.env.VITE_MONAD_EXECUTOR || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    84532: (import.meta.env.VITE_BASE_EXECUTOR || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    8453: (import.meta.env.VITE_BASE_MAINNET_EXECUTOR || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+  };
+
+  const address = addresses[chainId];
+  if (!address || address === '0x0000000000000000000000000000000000000000') {
+    throw new Error(`No RebalanceExecutor configured for chain ${chainId}`);
+  }
+
+  return address;
+}
+
+/**
+ * Get TimestampEnforcer contract address for chain
+ * Returns the caveat enforcer that validates delegation expiry timestamps
+ */
+export function getTimestampEnforcerAddress(chainId: number): `0x${string}` {
+  const addresses: Record<number, `0x${string}`> = {
+    10143: (import.meta.env.VITE_MONAD_TIMESTAMP_ENFORCER || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    84532: (import.meta.env.VITE_BASE_TIMESTAMP_ENFORCER || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    8453: (import.meta.env.VITE_BASE_MAINNET_TIMESTAMP_ENFORCER || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+  };
+
+  const address = addresses[chainId];
+  if (!address || address === '0x0000000000000000000000000000000000000000') {
+    throw new Error(`No TimestampEnforcer configured for chain ${chainId}`);
+  }
+
+  return address;
+}
+
+/**
+ * Create timestamp caveat for delegation expiry (Production)
+ * Architecture v1.4.0: 1 year expiry with TimestampEnforcer
+ *
+ * @param chainId - Chain ID to get TimestampEnforcer address
+ * @returns Caveat with 1 year expiry timestamp
+ */
+export function createTimestampCaveat(chainId: number): Caveat {
+  const enforcerAddress = getTimestampEnforcerAddress(chainId);
+
+  // Calculate expiry: 1 year from now
+  const oneYearInSeconds = 365 * 24 * 60 * 60;
+  const expirationTimestamp = Math.floor(Date.now() / 1000) + oneYearInSeconds;
+
+  // Encode expiration timestamp as terms (32 bytes, left-padded)
+  const terms = `0x${expirationTimestamp.toString(16).padStart(64, '0')}` as `0x${string}`;
+
+  return {
+    enforcer: enforcerAddress,
+    terms,
+    args: '0x' as `0x${string}`,
+  };
 }

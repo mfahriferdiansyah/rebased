@@ -29,7 +29,7 @@ export const monadTestnet = defineChain({
 /**
  * Base Sepolia Testnet Chain Definition
  */
-export const baseSepoliaTestnet = defineChain({
+export const baseSepolia = defineChain({
   id: 84532,
   name: 'Base Sepolia',
   network: 'base-sepolia',
@@ -47,12 +47,38 @@ export const baseSepoliaTestnet = defineChain({
     },
   },
   blockExplorers: {
-    default: { name: 'Basescan', url: 'https://sepolia.basescan.org' },
+    default: { name: 'BaseScan', url: 'https://sepolia.basescan.org' },
   },
   testnet: true,
 });
 
-export type SupportedChain = 'monad' | 'base';
+/**
+ * Base Mainnet Chain Definition
+ */
+export const baseMainnet = defineChain({
+  id: 8453,
+  name: 'Base',
+  network: 'base',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Ethereum',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: {
+      http: [process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org'],
+    },
+    public: {
+      http: [process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org'],
+    },
+  },
+  blockExplorers: {
+    default: { name: 'Blockscout', url: 'https://base.blockscout.com' },
+  },
+  testnet: false,
+});
+
+export type SupportedChain = 'monad' | 'base-sepolia' | 'base-mainnet';
 
 export const CHAIN_CONFIGS = {
   monad: {
@@ -61,10 +87,16 @@ export const CHAIN_CONFIGS = {
     name: 'Monad Testnet',
     nativeCurrency: 'MONAD',
   },
-  base: {
-    chain: baseSepoliaTestnet,
+  'base-sepolia': {
+    chain: baseSepolia,
     chainId: 84532,
     name: 'Base Sepolia',
+    nativeCurrency: 'ETH',
+  },
+  'base-mainnet': {
+    chain: baseMainnet,
+    chainId: 8453,
+    name: 'Base Mainnet',
     nativeCurrency: 'ETH',
   },
 };
@@ -74,7 +106,8 @@ export const CHAIN_CONFIGS = {
  */
 export function getChainById(chainId: number): SupportedChain | null {
   if (chainId === 10143) return 'monad';
-  if (chainId === 84532) return 'base';
+  if (chainId === 84532) return 'base-sepolia';
+  if (chainId === 8453) return 'base-mainnet';
   return null;
 }
 

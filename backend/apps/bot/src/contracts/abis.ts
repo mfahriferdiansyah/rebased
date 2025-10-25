@@ -11,6 +11,7 @@ export const RebalanceExecutorABI = [
       { name: 'userAccount', type: 'address', internalType: 'address' },
       { name: 'strategyId', type: 'uint256', internalType: 'uint256' },
       { name: 'tokensIn', type: 'address[]', internalType: 'address[]' },
+      { name: 'amountsIn', type: 'uint256[]', internalType: 'uint256[]' },
       { name: 'swapTargets', type: 'address[]', internalType: 'address[]' },
       { name: 'swapCallDatas', type: 'bytes[]', internalType: 'bytes[]' },
       { name: 'minOutputAmounts', type: 'uint256[]', internalType: 'uint256[]' },
@@ -144,6 +145,8 @@ export const StrategyRegistryABI = [
         internalType: 'struct StrategyLibrary.Strategy',
         components: [
           { name: 'id', type: 'uint256', internalType: 'uint256' },
+          { name: 'owner', type: 'address', internalType: 'address' },
+          { name: 'delegator', type: 'address', internalType: 'address' },
           { name: 'tokens', type: 'address[]', internalType: 'address[]' },
           { name: 'weights', type: 'uint256[]', internalType: 'uint256[]' },
           { name: 'rebalanceInterval', type: 'uint256', internalType: 'uint256' },

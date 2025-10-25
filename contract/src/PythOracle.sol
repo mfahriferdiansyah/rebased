@@ -107,9 +107,9 @@ contract PythOracle is
         require(token != address(0), "Invalid token");
         require(feedId != bytes32(0), "Invalid feed ID");
 
-        // HIGH-006 FIX: Validate feed ID works and returns reasonable price
-        // Use 1 hour staleness to allow setting feeds even if recently deployed
-        try _pythContract.getPriceNoOlderThan(feedId, 3600) returns (PythStructs.Price memory price) {
+        // HIGH-006 FIX: Validate feed ID exists on this chain
+        // Use 1 year staleness to check feed exists (Pyth pull oracles may not have recent updates)
+        try _pythContract.getPriceNoOlderThan(feedId, 31536000) returns (PythStructs.Price memory price) {
             require(price.price > 0, "Invalid feed - zero price");
 
             // If replacing existing feed, sanity check new price vs old price
@@ -240,7 +240,7 @@ contract PythOracle is
      * @param seconds_ Maximum age of price data in seconds
      */
     function setMaxPriceAge(uint256 seconds_) external override onlyOwner {
-        require(seconds_ > 0 && seconds_ <= 3600, "Invalid age"); // Max 1 hour
+        require(seconds_ > 0, "Invalid age");
         uint256 oldValue = maxPriceAge;
         maxPriceAge = seconds_;
         emit MaxPriceAgeUpdated(oldValue, seconds_);
@@ -257,6 +257,20 @@ contract PythOracle is
         uint256 oldValue = maxConfidenceRatio;
         maxConfidenceRatio = bps;
         emit MaxConfidenceRatioUpdated(oldValue, bps);
+    }
+
+    /**
+     * @notice Set a new Pyth contract address
+     * @param pythContract_ The new Pyth oracle contract address
+     * @dev Only owner can call this function. Added to fix deployment issues.
+     */
+    function setPythContract(address pythContract_) external onlyOwner {
+        require(pythContract_ != address(0), "Invalid Pyth contract");
+
+        address oldContract = address(_pythContract);
+        _pythContract = IPyth(pythContract_);
+
+        emit PythContractUpdated(oldContract, pythContract_);
     }
 
     /**

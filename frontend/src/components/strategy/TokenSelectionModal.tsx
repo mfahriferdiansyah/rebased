@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import { Token } from '@/lib/types/token';
 import { toast } from 'sonner';
 import { TokenIcon } from '@/components/ui/token-icon';
 import { getChainLogoUrl } from '@/lib/utils/token-logo';
+import { supportedChains } from '@/lib/chains';
 
 interface TokenSelectionModalProps {
   open: boolean;
@@ -36,12 +37,25 @@ export function TokenSelectionModal({
   const [loading, setLoading] = useState(false);
   const [selectedChainFilter, setSelectedChainFilter] = useState<string>('all');
 
-  // Define available networks - using actual chain logos, NO emojis
-  const networks = [
-    { id: 'all', name: 'All networks', logoUrl: null, locked: false },
-    { id: '84532', name: 'Base Sepolia', logoUrl: getChainLogoUrl(84532), locked: false },
-    { id: '10143', name: 'Monad Testnet', logoUrl: getChainLogoUrl(10143), locked: false },
-  ];
+  // Define available networks dynamically from supportedChains - using actual chain logos, NO emojis
+  const networks = useMemo(() => {
+    const chainNetworks = supportedChains.map((chain) => ({
+      id: chain.id.toString(),
+      name: chain.name,
+      logoUrl: getChainLogoUrl(chain.id),
+      locked: false,
+    }));
+
+    // Only show "All networks" if there are multiple chains
+    if (chainNetworks.length > 1) {
+      return [
+        { id: 'all', name: 'All networks', logoUrl: null, locked: false },
+        ...chainNetworks,
+      ];
+    }
+
+    return chainNetworks;
+  }, []);
 
   // Filter networks based on search
   const filteredNetworks = networks.filter((network) =>
@@ -74,8 +88,10 @@ export function TokenSelectionModal({
   const fetchTokens = async () => {
     setLoading(true);
     try {
-      // Fetch tokens from both supported chains (Base Sepolia and Monad Testnet)
-      const chainIds = selectedChainFilter === 'all' ? [84532, 10143] : Number(selectedChainFilter);
+      // Fetch tokens from supported chains (dynamically based on supportedChains)
+      const chainIds = selectedChainFilter === 'all'
+        ? supportedChains.map(chain => chain.id)
+        : Number(selectedChainFilter);
       const response = await tokensApi.getTokens(chainIds);
       setTokens(response.tokens);
       setFilteredTokens(response.tokens);

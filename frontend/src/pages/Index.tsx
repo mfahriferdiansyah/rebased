@@ -490,7 +490,7 @@ const Index = () => {
               onBlockAdd={handleBlockAdd}
               onStrategyLoad={setStrategy}
               onStrategySave={handleStrategySave}
-              onTemplateLoad={loadTemplate}
+              onTemplateLoad={() => loadTemplate(strategyChainId || 8453)}
               onReset={resetCanvas}
               onAutoLayout={handleAutoLayoutWithZoom}
               onUndo={handleUndo}
@@ -665,7 +665,7 @@ const Index = () => {
           open={isSetupWizardOpen}
           onOpenChange={setIsSetupWizardOpen}
           strategy={strategy}
-          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || strategyChainId || 10143}
+          chainId={strategy?.blocks.find(b => b.type === BlockType.ASSET)?.data.chainId || strategyChainId || 8453}
           initialStep={wizardInitialStep}
           initialDelegatorAddress={activeDelegation?.delegationData.delegator}
           onComplete={async () => {

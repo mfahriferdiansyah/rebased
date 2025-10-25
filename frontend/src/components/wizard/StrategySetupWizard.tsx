@@ -300,6 +300,7 @@ export function StrategySetupWizard({
       case 'smart-account':
         return (
           <SmartAccountStep
+            chainId={chainId}
             onNext={(delegatorAddress) => handleNextStep('smart-account', delegatorAddress)}
             onCancel={handleCancel}
           />

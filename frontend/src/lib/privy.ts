@@ -1,5 +1,5 @@
 import { PrivyClientConfig } from '@privy-io/react-auth';
-import { monadTestnet, baseSepoliaTestnet } from './chains';
+import { baseMainnet } from './chains';
 
 /**
  * Privy Configuration
@@ -42,17 +42,17 @@ export const privyConfig: PrivyClientConfig = {
     showWalletUIs: true,
   },
 
-  // Supported blockchain networks - Base Sepolia (default) and Monad Testnet
-  supportedChains: [baseSepoliaTestnet, monadTestnet],
+  // Supported blockchain networks - Base Mainnet (production)
+  supportedChains: [baseMainnet],
 
-  // Default chain when wallet is first created - Base Sepolia
-  defaultChain: baseSepoliaTestnet,
+  // Default chain when wallet is first created - Base Mainnet
+  defaultChain: baseMainnet,
 
   // Fiat On-Ramp (Moonpay)
   fiatOnRamp: {
     enabled: true,
-    // Use Moonpay sandbox for testnet
-    useSandbox: true,
+    // Use Moonpay production for mainnet
+    useSandbox: false,
   },
 
   // Additional features

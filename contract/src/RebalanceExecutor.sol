@@ -45,6 +45,9 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     // SECURITY FIX MEDIUM-1: Emergency pause mechanism
     bool public paused;
 
+    // SECURITY: Bot authorization for contract access control
+    mapping(address => bool) public authorizedBots;
+
     // Events
     event RebalanceExecuted(
         address indexed user, uint256 indexed strategyId, uint256 timestamp, uint256 drift, uint256 gasReimbursed
@@ -54,6 +57,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     event DEXApprovalUpdated(address indexed dex, bool approved);
     event EmergencyPaused(address indexed caller);
     event EmergencyUnpaused(address indexed caller);
+    event BotAuthorizationUpdated(address indexed bot, bool authorized);
 
     // DEBUG: Detailed logging events for error tracing
     event DebugRebalanceStarted(address indexed user, uint256 indexed strategyId, address sender);
@@ -77,6 +81,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     error ContractPaused();
     error NotADeleGator();
     error InvalidDeleGatorOwner();
+    error UnauthorizedBot();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -86,6 +91,15 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     // SECURITY FIX MEDIUM-1: Pause modifier
     modifier whenNotPaused() {
         if (paused) revert ContractPaused();
+        _;
+    }
+
+    /**
+     * @notice Only authorized bots can call protected functions
+     * @dev Prevents unauthorized access to rebalancing and test functions
+     */
+    modifier onlyAuthorizedBot() {
+        if (!authorizedBots[msg.sender]) revert UnauthorizedBot();
         _;
     }
 
@@ -168,6 +182,41 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     }
 
     /**
+     * @notice Authorize or revoke a bot address
+     * @param bot Bot EOA address
+     * @param authorized Whether to authorize (true) or revoke (false)
+     * @dev ADMIN ONLY: Owner can manage bot access
+     */
+    function setBotAuthorization(address bot, bool authorized) external onlyOwner {
+        require(bot != address(0), "Invalid bot address");
+        authorizedBots[bot] = authorized;
+        emit BotAuthorizationUpdated(bot, authorized);
+    }
+
+    /**
+     * @notice Authorize or revoke multiple bot addresses at once
+     * @param bots Array of bot EOA addresses
+     * @param authorized Whether to authorize (true) or revoke (false)
+     * @dev ADMIN ONLY: Batch operation for efficiency
+     */
+    function batchSetBotAuthorization(address[] calldata bots, bool authorized) external onlyOwner {
+        for (uint256 i = 0; i < bots.length; i++) {
+            require(bots[i] != address(0), "Invalid bot address");
+            authorizedBots[bots[i]] = authorized;
+            emit BotAuthorizationUpdated(bots[i], authorized);
+        }
+    }
+
+    /**
+     * @notice Check if an address is an authorized bot
+     * @param bot Address to check
+     * @return isAuthorized Whether the address is authorized
+     */
+    function isAuthorizedBot(address bot) external view returns (bool isAuthorized) {
+        return authorizedBots[bot];
+    }
+
+    /**
      * @notice Update DelegationManager address
      * @param _newDelegationManager New DelegationManager contract address
      * @dev ADMIN ONLY: Allows owner to update DelegationManager in case of redeployment
@@ -182,6 +231,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * @param userAccount User's MetaMask DeleGator account address
      * @param strategyId Strategy ID to rebalance
      * @param tokensIn Tokens being sold in each swap (for approval)
+     * @param amountsIn Exact amounts to approve for each swap (SECURITY FIX CRITICAL-001)
      * @param swapTargets Target contracts for each swap (from DEX aggregator)
      * @param swapCallDatas Pre-calculated optimal swap calldata (from off-chain DEX aggregator)
      * @param minOutputAmounts Minimum output amounts for slippage protection (SECURITY FIX HIGH-2)
@@ -194,25 +244,27 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      *      This saves gas and enables better pricing through multi-DEX comparison.
      *
      * SECURITY ENHANCEMENTS:
+     * - CRITICAL-001: Approves ONLY exact amounts needed, revokes after swap
      * - HIGH-1: Validates swap targets against whitelist
      * - HIGH-2: Enforces minimum output amounts for slippage protection
      * - HIGH-3: Validates swaps improve portfolio allocation
      * - HIGH-5: Validates final balances match expected values
      * - MEDIUM-1: Can be paused in emergency
      * - NEW: Supports native token swaps via nativeValues parameter
-     * - NEW: Automatically approves tokens before swaps
+     * - NEW: Automatically approves tokens before swaps and revokes after
      */
     function rebalance(
         address userAccount,
         uint256 strategyId,
         address[] calldata tokensIn,
+        uint256[] calldata amountsIn,
         address[] calldata swapTargets,
         bytes[] calldata swapCallDatas,
         uint256[] calldata minOutputAmounts,
         uint256[] calldata nativeValues,
         bytes[] calldata permissionContexts,
         ModeCode[] calldata modes
-    ) external payable nonReentrant whenNotPaused {
+    ) external payable onlyAuthorizedBot nonReentrant whenNotPaused {
         // DEBUG: Log function entry
         emit DebugRebalanceStarted(userAccount, strategyId, msg.sender);
 
@@ -258,10 +310,16 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
 
         // 7. Validate swap data
         require(tokensIn.length == swapTargets.length, "TokensIn length mismatch");
+        require(amountsIn.length == swapTargets.length, "AmountsIn length mismatch");
         require(swapTargets.length == swapCallDatas.length, "Swap arrays length mismatch");
         require(swapTargets.length == minOutputAmounts.length, "Min output amounts length mismatch");
         require(swapTargets.length == nativeValues.length, "Native values length mismatch");
         require(swapTargets.length > 0, "No swaps provided");
+
+        // SECURITY FIX CRITICAL-001: Validate approval amounts are non-zero
+        for (uint256 i = 0; i < amountsIn.length; i++) {
+            require(amountsIn[i] > 0, "Invalid approval amount");
+        }
 
         // SECURITY FIX HIGH-1: Validate all swap targets are approved DEXs
         for (uint256 i = 0; i < swapTargets.length; i++) {
@@ -282,20 +340,21 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         // Bot provides pre-calculated optimal routes from DEX aggregators
         // Native values allow DeleGator to send its own native tokens with swaps/wraps
 
-        // Build Execution[] array with approval + swap for each token
+        // SECURITY FIX CRITICAL-001: Build Execution[] array with approval + swap + revocation
+        // This ensures DEXs only have approval during the swap, preventing fund drainage
         // MetaMask's DelegationManager expects ERC-7579 Execution format
-        Execution[] memory executions = new Execution[](swapTargets.length * 2);
+        Execution[] memory executions = new Execution[](swapTargets.length * 3);
         uint256 idx = 0;
 
         for (uint256 i = 0; i < swapTargets.length; i++) {
-            // 1. Approval execution: DeleGator approves DEX to spend tokens
+            // 1. Approval execution: DeleGator approves DEX to spend EXACT amount only
             executions[idx++] = Execution({
                 target: tokensIn[i],        // Token contract address
                 value: 0,                   // No native value for approval
                 callData: abi.encodeWithSignature(
                     "approve(address,uint256)",
                     swapTargets[i],
-                    type(uint256).max
+                    amountsIn[i]            // ✅ CRITICAL-001 FIX: Exact amount, not unlimited
                 )
             });
 
@@ -304,6 +363,17 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
                 target: swapTargets[i],     // DEX contract address
                 value: nativeValues[i],     // Native token amount (for native swaps/wraps)
                 callData: swapCallDatas[i]  // Pre-calculated optimal swap route
+            });
+
+            // 3. Revocation execution: DeleGator revokes DEX approval immediately
+            executions[idx++] = Execution({
+                target: tokensIn[i],        // Token contract address
+                value: 0,                   // No native value for revocation
+                callData: abi.encodeWithSignature(
+                    "approve(address,uint256)",
+                    swapTargets[i],
+                    0                       // ✅ CRITICAL-001 FIX: Revoke approval to 0
+                )
             });
         }
 
@@ -476,7 +546,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         address userAccount,
         bytes calldata permissionContext,
         ModeCode mode
-    ) external returns (bool success) {
+    ) external onlyAuthorizedBot returns (bool success) {
         // Build truly empty execution (no operations at all)
         // This tests ONLY the delegation framework without any actual execution
         Execution[] memory executions = new Execution[](0);  // Empty array = no-op
@@ -525,7 +595,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         address spender,
         bytes calldata permissionContext,
         ModeCode mode
-    ) external returns (bool success) {
+    ) external onlyAuthorizedBot returns (bool success) {
         // Build approval execution
         Execution[] memory executions = new Execution[](1);
         executions[0] = Execution({
@@ -579,7 +649,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         uint256 amount,
         bytes calldata permissionContext,
         ModeCode mode
-    ) external returns (bool success) {
+    ) external onlyAuthorizedBot returns (bool success) {
         // Build transfer execution
         Execution[] memory executions = new Execution[](1);
         executions[0] = Execution({
@@ -635,7 +705,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         uint256 nativeValue,
         bytes calldata permissionContext,
         ModeCode mode
-    ) external returns (bool success) {
+    ) external onlyAuthorizedBot returns (bool success) {
         // Build approval + swap executions
         Execution[] memory executions = new Execution[](2);
 
@@ -702,7 +772,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
         uint256 nativeValue,
         bytes calldata permissionContext,
         ModeCode mode
-    ) external returns (bool success) {
+    ) external onlyAuthorizedBot returns (bool success) {
         // Build ONLY swap execution (approval assumed to be already set)
         Execution[] memory executions = new Execution[](1);
         executions[0] = Execution({
@@ -749,7 +819,7 @@ contract RebalanceExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
      * @return Version string
      */
     function getVersion() external pure returns (string memory) {
-        return "1.2.0-debug-delegation";
+        return "1.4.0-bot-authorization";
     }
 
     /**

@@ -1,16 +1,15 @@
 import { createConfig, http } from 'wagmi';
-import { monadTestnet, baseSepoliaTestnet } from './chains';
+import { baseMainnet } from './chains';
 
 /**
  * Wagmi configuration for use with Privy
  * This enables contract interactions and blockchain queries
- * Supports Base Sepolia (default) and Monad Testnet
+ * PRODUCTION: Base Mainnet only
  */
 export const wagmiConfig = createConfig({
-  chains: [baseSepoliaTestnet, monadTestnet],
+  chains: [baseMainnet],
   transports: {
-    [baseSepoliaTestnet.id]: http(),
-    [monadTestnet.id]: http(),
+    [baseMainnet.id]: http(),
   },
 });
 

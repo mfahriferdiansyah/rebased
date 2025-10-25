@@ -348,7 +348,7 @@ export function useCanvas() {
               symbol: weth?.symbol || 'TOKEN',
               name: weth?.name || 'Token',
               address: weth?.address || '0x0',
-              chainId: weth?.chainId || 10143,
+              chainId: weth?.chainId || chainId,
               decimals: weth?.decimals || 18,
               logoUri: weth?.logoUri,
               initialWeight: 60,
@@ -364,7 +364,7 @@ export function useCanvas() {
               symbol: usdc?.symbol || 'TOKEN',
               name: usdc?.name || 'Token',
               address: usdc?.address || '0x0',
-              chainId: usdc?.chainId || 10143,
+              chainId: usdc?.chainId || chainId,
               decimals: usdc?.decimals || 6,
               logoUri: usdc?.logoUri,
               initialWeight: 40,
@@ -399,14 +399,14 @@ export function useCanvas() {
     }
   }, []);
 
-  const loadTemplate = useCallback(async () => {
-    // Fetch real tokens from the API
+  const loadTemplate = useCallback(async (chainId: number = 8453) => {
+    // Fetch real tokens from the API for the specified chain
     const { tokensApi } = await import('@/lib/api');
 
     try {
-      const response = await tokensApi.getTokens([10143]);
+      const response = await tokensApi.getTokens([chainId]);
 
-      // Find WETH and USDC from the fetched tokens (Monad only)
+      // Find WETH and USDC from the fetched tokens
       const weth = response.tokens.find(t => t.symbol === 'WETH') || response.tokens[0];
       const usdc = response.tokens.find(t => t.symbol === 'USDC') || response.tokens[1];
 
@@ -426,7 +426,7 @@ export function useCanvas() {
               symbol: weth?.symbol || 'TOKEN',
               name: weth?.name || 'Token',
               address: weth?.address || '0x0',
-              chainId: weth?.chainId || 10143,
+              chainId: weth?.chainId || chainId,
               decimals: weth?.decimals || 18,
               logoUri: weth?.logoUri,
               initialWeight: 60,
@@ -442,7 +442,7 @@ export function useCanvas() {
               symbol: usdc?.symbol || 'TOKEN',
               name: usdc?.name || 'Token',
               address: usdc?.address || '0x0',
-              chainId: usdc?.chainId || 10143,
+              chainId: usdc?.chainId || chainId,
               decimals: usdc?.decimals || 6,
               logoUri: usdc?.logoUri,
               initialWeight: 40,

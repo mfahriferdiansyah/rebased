@@ -97,6 +97,68 @@ ${actionBlocks.length > 0 ? `- Actions: ${actionBlocks.map((b: any) => b.data.ac
 User is modifying the existing strategy above. Maintain the existing blocks and only apply the requested changes.`;
     }
 
+    // Detect chain preference from user intent
+    const intentLower = userIntent.toLowerCase();
+    const wantsMonad = intentLower.includes('monad') || intentLower.includes('mon ');
+    const wantsBase = intentLower.includes('base');
+
+    // Default to Base Mainnet (production) unless Monad specifically requested
+    // Determine chain ID based on user preference (Base prioritized by default)
+    const selectedChainId = (wantsMonad && !wantsBase) ? 10143 : 8453;
+    const chainName = selectedChainId === 10143 ? 'Monad Testnet' : 'Base Mainnet';
+
+    // Get available tokens from loaded tokens.json for selected chain
+    const availableTokens = this.tokensData.tokens[selectedChainId.toString()] || [];
+
+    // Categorize tokens with tags for better AI understanding
+    const categorizeToken = (token: any): string => {
+      const symbol = token.symbol.toUpperCase();
+      const tags: string[] = [];
+
+      // Stablecoins
+      if (['USDC', 'USDT', 'DAI', 'USDS'].includes(symbol)) {
+        tags.push('stablecoin');
+      }
+
+      // Meme coins (Base Mainnet)
+      if (['BRETT', 'TOSHI', 'DEGEN'].includes(symbol)) {
+        tags.push('meme');
+      }
+
+      // Wrapped assets
+      if (['WETH', 'WBTC', 'cbBTC'].includes(symbol)) {
+        tags.push('wrapped');
+      }
+
+      // Native assets
+      if (['ETH', 'MON'].includes(symbol)) {
+        tags.push('native');
+      }
+
+      // DeFi protocols
+      if (['AERO', 'LINK', 'AAVE', 'ENA', 'CAKE', 'CRV', 'MORPHO', 'PENDLE', 'UNI', 'SUSHI'].includes(symbol)) {
+        tags.push('defi');
+      }
+
+      return tags.length > 0 ? `[${tags.join(', ')}]` : '[other]';
+    };
+
+    // Build token list for prompt with categories
+    const tokenListPrompt = availableTokens
+      .map((token: any) => {
+        const tags = categorizeToken(token);
+        return `   - ${token.symbol} ${tags}: ${token.address} (${token.decimals} decimals) - ${token.name}`;
+      })
+      .join('\n');
+
+    // Get example tokens for the prompt (WETH and USDC)
+    const exampleWETH = availableTokens.find((t: any) => t.symbol === 'WETH') || availableTokens[0];
+    const exampleUSDC = availableTokens.find((t: any) => t.symbol === 'USDC') || availableTokens[1];
+
+    this.logger.log(`🔗 Chain selected: ${chainName} (chainId: ${selectedChainId})`);
+    this.logger.log(`📋 Available tokens: ${availableTokens.length} tokens from tokens.json`);
+    this.logger.debug(`Chain detection: wantsMonad=${wantsMonad}, wantsBase=${wantsBase}, selectedChainId=${selectedChainId}`);
+
     const systemPrompt = `You are a portfolio strategy designer for Rebased, a crypto portfolio automation platform.
 
 Your job is to convert user intent into a structured strategy with blocks and connections. You must respond with valid JSON only.
@@ -109,22 +171,43 @@ CRITICAL CONNECTION RULES (MUST FOLLOW):
 5. NEVER connect: ACTION → ACTION (one action per strategy for now)
 
 IMPORTANT RULES FOR STABLE RESPONSES:
-1. Use ONLY Monad Testnet tokens (chainId: 10143)
-2. Use real token addresses from this list:
-   - WETH: 0xB5a30b0FDc5EA94A52fDc42e3E9760Cb8449Fb37 (18 decimals) - Use for ETH/Ethereum
-   - USDC: 0xf817257fed379853cDe0fa4F97AB987181B1E5Ea (6 decimals) - Use for stablecoin/stable/USD
-   - WBTC: 0xcf5a6076cfa32686c0Df13aBaDa2b40dec133F1d (8 decimals) - Use for BTC/Bitcoin
-3. For native MON, use: 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE (18 decimals)
-4. Total weights MUST sum to 100
-5. Block IDs must be unique (use format: asset-1, asset-2, action-1, etc.)
-6. Use consistent positioning for clean layouts
-7. LISTEN TO USER'S ASSET PREFERENCES:
-   - If user says "BTC" or "Bitcoin", include WBTC
-   - If user says "ETH" or "Ethereum", include WETH
-   - If user says "stable" or "stablecoin" or "USDC", include USDC
-   - Conservative = more stablecoin (60-70% USDC)
-   - Aggressive = more crypto (70-80% WETH/WBTC)
-   - Balanced = 50/50 split
+1. Use ${chainName} tokens (chainId: ${selectedChainId})
+2. **CRITICAL: Use ONLY token addresses from this EXACT list below. DO NOT hallucinate or create tokens not in this list:**
+
+TOKEN CATEGORIES (pay attention to tags in brackets):
+${tokenListPrompt}
+
+Tag meanings:
+   - [stablecoin] = Stablecoins (USDC, USDT, DAI) - pegged to $1
+   - [meme] = Meme coins (BRETT, TOSHI, DEGEN) - community/viral tokens
+   - [wrapped] = Wrapped assets (WETH, WBTC, cbBTC) - tokenized versions
+   - [native] = Native blockchain tokens (ETH, MON)
+   - [defi] = DeFi protocol tokens (AERO, LINK, AAVE, CRV, MORPHO, etc.)
+
+3. Token Selection Rules:
+   - **MANDATORY: ALWAYS include USDC [stablecoin] unless user EXPLICITLY says "no stable", "no USDC", or "no stablecoin"**
+   - When user says "meme" → Use tokens tagged [meme]: BRETT, TOSHI, DEGEN
+   - When user says "ETH/Ethereum" → Use WETH [wrapped] or ETH [native]
+   - When user says "BTC/Bitcoin" → Use WBTC [wrapped] or cbBTC [wrapped]
+   - When user says "DeFi" → Use tokens tagged [defi]
+   - Match user's requested tokens from the list above
+
+4. Portfolio Allocation Rules (READ CAREFULLY):
+   - **Conservative** = 60-70% USDC + 30-40% other assets (low risk)
+   - **Balanced** = 40-50% USDC + 50-60% other assets (medium risk, DEFAULT)
+   - **Aggressive** = 10-20% USDC + 80-90% other assets (high risk, more crypto exposure!)
+   - ALWAYS include USDC unless explicitly excluded
+   - If user doesn't specify risk level, default to Balanced (40-50% USDC)
+
+5. Allocation Examples:
+   - "Meme and WETH Aggressive Portfolio" → 15% USDC + 45% WETH + 40% meme tokens (BRETT/TOSHI/DEGEN split)
+   - "Conservative ETH" → 65% USDC + 35% WETH
+   - "BRETT only" → 50% USDC + 50% BRETT (Balanced by default)
+   - "DeFi portfolio" → 40% USDC + 60% DeFi tokens (AERO, LINK, AAVE, etc.)
+
+6. Total weights MUST sum to 100
+7. Block IDs must be unique (use format: asset-1, asset-2, action-1, etc.)
+8. Use consistent positioning for clean layouts
 
 Available block types:
 1. ASSET: Represents a token (WETH, USDC, WBTC, MON) with initial weight
@@ -132,7 +215,7 @@ Available block types:
 
 Return ONLY valid JSON following this exact structure.
 
-COMPLETE EXAMPLE JSON (2 assets + 1 action):
+COMPLETE EXAMPLE JSON (2 assets + 1 action) for ${chainName}:
 {
   "name": "ETH/USDC Rebalancing",
   "description": "60/40 portfolio with hourly rebalancing",
@@ -143,11 +226,11 @@ COMPLETE EXAMPLE JSON (2 assets + 1 action):
       "position": { "x": 400, "y": 100 },
       "size": { "width": 200, "height": 150 },
       "data": {
-        "symbol": "WETH",
-        "name": "Wrapped ETH",
-        "address": "0xB5a30b0FDc5EA94A52fDc42e3E9760Cb8449Fb37",
-        "chainId": 10143,
-        "decimals": 18,
+        "symbol": "${exampleWETH.symbol}",
+        "name": "${exampleWETH.name}",
+        "address": "${exampleWETH.address}",
+        "chainId": ${selectedChainId},
+        "decimals": ${exampleWETH.decimals},
         "initialWeight": 60
       },
       "connections": { "inputs": ["start-block"], "outputs": ["action-1"] }
@@ -158,11 +241,11 @@ COMPLETE EXAMPLE JSON (2 assets + 1 action):
       "position": { "x": 400, "y": 300 },
       "size": { "width": 200, "height": 150 },
       "data": {
-        "symbol": "USDC",
-        "name": "USD Coin",
-        "address": "0xf817257fed379853cDe0fa4F97AB987181B1E5Ea",
-        "chainId": 10143,
-        "decimals": 6,
+        "symbol": "${exampleUSDC.symbol}",
+        "name": "${exampleUSDC.name}",
+        "address": "${exampleUSDC.address}",
+        "chainId": ${selectedChainId},
+        "decimals": ${exampleUSDC.decimals},
         "initialWeight": 40
       },
       "connections": { "inputs": ["start-block"], "outputs": ["action-1"] }
@@ -269,7 +352,7 @@ Layout rules:
         completion.choices[0].message.content || '{}',
       );
 
-      this.logger.log(`Successfully generated strategy: ${strategyData.name}`);
+      this.logger.log(`Successfully generated strategy: ${strategyData.name} on ${chainName}`);
 
       // Enrich blocks with token data from tokens.json
       const enrichedBlocks = (strategyData.blocks || []).map((block: any) => {
