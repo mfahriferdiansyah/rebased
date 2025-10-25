@@ -1,46 +1,85 @@
 # Rebased Backend
 
-Non-custodial portfolio automation platform backend - Built with NestJS microservices architecture.
+Non-custodial portfolio automation platform - Production-ready backend with automated rebalancing on Base.
 
-## 🏗️ Architecture
+## System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    REBASED BACKEND                           │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│  │ API Server  │    │ Bot Worker  │    │  Indexer    │    │
-│  │ Port 3000   │    │   Cron      │    │   Events    │    │
-│  │             │    │             │    │             │    │
-│  │ • REST API  │    │ • Monitor   │    │ • Listeners │    │
-│  │ • SIWE Auth │    │ • Executor  │    │ • Processor │    │
-│  │ • WebSocket │    │ • DEX Agg   │    │ • Backfill  │    │
-│  │ • Swagger   │    │ • Gas       │    │             │    │
-│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    │
-│         │                   │                   │            │
-│         └───────────────────┼───────────────────┘            │
-│                             │                                │
-│  ┌──────────────────────────┴────────────────────────┐      │
-│  │          SHARED INFRASTRUCTURE                     │      │
-│  ├────────────────────────────────────────────────────┤      │
-│  │ • PostgreSQL (Prisma ORM)                          │      │
-│  │ • Redis (Bull Queues + Pub/Sub)                    │      │
-│  │ • Socket.IO (WebSocket Gateway)                    │      │
-│  │ • Viem (Blockchain - Monad + Base)                 │      │
-│  └────────────────────────────────────────────────────┘      │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     REBASED BACKEND                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   ┌─────────────┐      ┌──────────────┐                   │
+│   │ API Server  │      │ Bot Worker   │                   │
+│   │ Port 3000   │      │ Automated    │                   │
+│   │             │      │              │                   │
+│   │ • REST API  │      │ • Monitor    │                   │
+│   │ • Auth      │      │ • Executor   │                   │
+│   │ • Swagger   │      │ • DEX (0x)   │                   │
+│   └──────┬──────┘      └──────┬───────┘                   │
+│          │                    │                            │
+│          └────────┬───────────┘                            │
+│                   │                                        │
+│   ┌───────────────┴──────────────────┐                    │
+│   │  SHARED INFRASTRUCTURE            │                    │
+│   ├───────────────────────────────────┤                    │
+│   │ • PostgreSQL (Prisma ORM)         │                    │
+│   │ • Redis (Bull Queues)             │                    │
+│   │ • Viem (Base Blockchain)          │                    │
+│   │ • Pyth Oracle (Price Feeds)       │                    │
+│   └───────────────────────────────────┘                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+## User Flow
+
+```
+User                Frontend             Backend              Blockchain
+ │                    │                    │                    │
+ │  1. Connect Wallet │                    │                    │
+ │ ──────────────────>│                    │                    │
+ │                    │  2. Request Nonce  │                    │
+ │                    │ ──────────────────>│                    │
+ │                    │ <──────────────────│                    │
+ │  3. Sign Message   │                    │                    │
+ │ <──────────────────│                    │                    │
+ │ ──────────────────>│                    │                    │
+ │                    │  4. Verify + JWT   │                    │
+ │                    │ ──────────────────>│                    │
+ │                    │ <──────────────────│                    │
+ │                    │                    │                    │
+ │  5. Create Strategy│                    │                    │
+ │ ──────────────────>│ ──────────────────>│                    │
+ │                    │ <──────────────────│                    │
+ │                    │                    │  6. Deploy Strategy│
+ │                    │  7. Sign TX        │ ──────────────────>│
+ │ <──────────────────│                    │ <──────────────────│
+ │ ──────────────────>│                    │                    │
+ │                    │  8. Broadcast TX   │                    │
+ │                    │ ───────────────────────────────────────>│
+ │                    │                    │                    │
+ │  9. Sign Delegation│                    │                    │
+ │ <──────────────────│                    │                    │
+ │ ──────────────────>│ 10. Store Del.    │                    │
+ │                    │ ──────────────────>│                    │
+ │                    │                    │                    │
+ │                    │                    │ 11. Bot Monitors   │
+ │                    │                    │    (every 30s)     │
+ │                    │                    │                    │
+ │                    │                    │ 12. Execute Rebal. │
+ │                    │                    │ ──────────────────>│
+ │                    │                    │                    │
+ │ 13. Notify Complete│                    │                    │
+ │ <──────────────────────────────────────<│                    │
+```
+
+## Quick Start
 
 ### Prerequisites
-
 - Node.js 20+
-- Docker & Docker Compose
 - PostgreSQL 16
 - Redis 7
-- MetaMask wallet (for testing)
+- Base RPC URL (Alchemy recommended)
 
 ### Installation
 
@@ -51,197 +90,182 @@ npm install
 # 2. Generate Prisma client
 npm run prisma:generate
 
-# 3. Configure environment
+# 3. Setup environment
 cp .env.example .env
-# Edit .env with your values
+# Edit .env with your configuration
 
 # 4. Start infrastructure
-docker-compose up -d postgres redis
+docker-compose up -d
 
 # 5. Run migrations
 npm run prisma:migrate
 ```
 
-### Development
+### Run Services
 
 ```bash
-# Start API server (http://localhost:3000)
+# API Server
 npm run start:api
 
-# Start bot worker
+# Bot Worker
 npm run start:bot
 
-# Start indexer worker
-npm run start:indexer
-
-# Start all services
+# All services
 npm run docker:up
 ```
 
-### Access Tools
+### Access
 
-- **API Docs**: http://localhost:3000/api (Swagger)
-- **Bull Board**: http://localhost:3001 (Queue monitoring)
-- **Prisma Studio**: http://localhost:5555 (Database GUI)
+- API Docs: http://localhost:3000/api
+- Prisma Studio: `npm run prisma:studio`
 
-## 📚 Documentation
-
-- **[End-to-End Flow](./docs/END_TO_END_FLOW.md)** - Complete system architecture and flow
-- **[Testing Guide](./docs/TESTING.md)** - Step-by-step testing instructions
-- **[Environment Variables](./.env.example)** - All configuration options
-
-## 🔑 Key Features
-
-### Authentication (SIWE + JWT)
-- Sign-In with Ethereum (EIP-4361)
-- Nonce-based replay protection
-- JWT with 7-day expiration
-- MetaMask integration ready
-
-### Strategy Management
-- Create, read, update, delete strategies
-- Multi-chain support (Monad + Base)
-- Configurable rebalance intervals
-- Weighted token allocations (basis points)
-
-### Delegation (ERC-7710)
-- EIP-712 typed signature verification
-- MetaMask delegation signing
-- On-chain proof validation
-- Revocation support
-
-### Automated Rebalancing
-- Cron-based monitoring (every 30s)
-- Drift calculation and detection
-- Bull queue processing
-- MEV protection (Flashbots + intents)
-- DEX aggregation (1inch, 0x, ParaSwap, Uniswap)
-- Gas price optimization
-
-### Blockchain Indexing
-- Multi-chain event listeners (Monad + Base)
-- Real-time event processing
-- Historical backfill support
-- Database synchronization
-
-### Real-Time Updates
-- Socket.IO WebSocket gateway
-- User-specific event rooms
-- Rebalance notifications
-- System alerts
-
-### Inter-Service Communication
-- Redis pub/sub for events
-- 11 event channels
-- Cross-service coordination
-- Real-time state sync
-
-## 🛠️ Technology Stack
-
-| Category | Technology |
-|----------|-----------|
-| **Framework** | NestJS 10, TypeScript 5.3 |
-| **Database** | PostgreSQL 16, Prisma ORM 5.8 |
-| **Cache/Queue** | Redis 7, Bull 4.12, ioredis 5.3 |
-| **Blockchain** | Viem 2.38, SIWE 2.1 |
-| **WebSocket** | Socket.IO 4.6 |
-| **API Docs** | Swagger (OpenAPI 3.0) |
-| **Validation** | class-validator, class-transformer, Joi |
-| **Testing** | Jest 29 |
-| **DevOps** | Docker, Docker Compose |
-
-## 📡 API Endpoints
-
-### Authentication
-- `POST /auth/nonce` - Get SIWE nonce
-- `POST /auth/verify` - Verify signature, get JWT
-
-### Strategies
-- `GET /strategies` - List user strategies
-- `POST /strategies` - Create new strategy
-- `GET /strategies/:id` - Get strategy details
-- `PATCH /strategies/:id` - Update strategy
-- `DELETE /strategies/:id` - Deactivate strategy
-
-### Delegations
-- `GET /delegations` - List user delegations
-- `POST /delegations` - Create delegation
-- `GET /delegations/:id` - Get delegation details
-- `POST /delegations/:id/revoke` - Revoke delegation
-- `GET /delegations/stats` - Get delegation statistics
-
-### Health
-- `GET /health` - Basic health check
-- `GET /health/detailed` - Detailed health with dependencies
-
-**Full API docs**: http://localhost:3000/api (when running)
-
-## 🔧 Development Scripts
+## Environment Configuration
 
 ```bash
-# Start services
-npm run start:api          # API server (watch mode)
-npm run start:bot          # Bot worker (watch mode)
-npm run start:indexer      # Indexer worker (watch mode)
-
-# Build
-npm run build              # Build all apps
-npm run build:api          # Build API only
-npm run build:bot          # Build bot only
-npm run build:indexer      # Build indexer only
-
 # Database
-npm run prisma:generate    # Generate Prisma client
-npm run prisma:migrate     # Run migrations
-npm run prisma:studio      # Open Prisma Studio
-npm run prisma:seed        # Seed database
+DATABASE_URL="postgresql://user:pass@localhost:5432/rebased"
 
-# Docker
-npm run docker:up          # Start infrastructure
-npm run docker:down        # Stop infrastructure
-npm run docker:logs        # View logs
-npm run docker:build       # Rebuild images
-npm run docker:restart     # Restart services
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
 
-# Code quality
-npm run lint               # Lint code
-npm run format             # Format with Prettier
-npm run test               # Run unit tests
-npm run test:e2e           # Run E2E tests
-npm run test:cov           # Generate coverage
+# Base Mainnet
+BASE_MAINNET_RPC_URL=https://mainnet.base.org
+BASE_MAINNET_CHAIN_ID=8453
+BASE_MAINNET_REGISTRY=0x051790142C92E55C88d45469419CBC74735bDec5
+BASE_MAINNET_EXECUTOR=0xE5937713Ed44977dBBBdFF63aDab110e2A8aFF57
+BASE_MAINNET_DELEGATION_MANAGER=0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3
+
+# Bot Configuration
+BOT_PRIVATE_KEY=<authorized_bot_key>
+MONITORING_INTERVAL=30000  # 30 seconds
+
+# 0x DEX Aggregator
+ENABLE_0X=true
+ZEROX_API_KEY=<your_0x_api_key>
 ```
 
-## 🐳 Docker Deployment
+## API Endpoints
 
-### Services
+### Authentication
+```
+POST /auth/nonce          - Get SIWE nonce
+POST /auth/verify         - Verify signature + get JWT
+```
 
-| Service | Port | Description |
-|---------|------|-------------|
-| api | 3000 | REST API + WebSocket |
-| bot | - | Background worker |
-| indexer | - | Event indexer |
-| postgres | 5432 | PostgreSQL database |
-| redis | 6379 | Redis cache + queue |
-| bull-board | 3001 | Queue monitoring UI |
-| prisma-studio | 5555 | Database GUI |
+### Strategies
+```
+GET    /strategies        - List user strategies
+POST   /strategies        - Create strategy
+GET    /strategies/:id    - Get strategy details
+PATCH  /strategies/:id    - Update strategy
+DELETE /strategies/:id    - Delete strategy
+```
 
-## 🎯 Roadmap
+### Delegations
+```
+GET  /delegations         - List delegations
+POST /delegations         - Create delegation
+GET  /delegations/:id     - Get delegation details
+POST /delegations/:id/revoke - Revoke delegation
+```
 
-- [x] Phase 1: NestJS monorepo + infrastructure
-- [x] Phase 2: API Server (auth, strategies, delegations)
-- [x] Phase 3: Bot Worker (monitor, executor, DEX, gas, MEV)
-- [x] Phase 4: Indexer Worker (listeners, processors, backfill)
-- [x] Phase 5: Redis pub/sub + E2E testing
-- [ ] **Next**: Smart contract deployment
-- [ ] **Next**: Frontend integration
-- [ ] **Next**: Testnet deployment
-- [ ] **Next**: Security audit
-- [ ] **Next**: Mainnet launch
+## Bot Worker Flow
 
-## 📝 License
+```
+ ┌──────────────────────────────────────┐
+ │ Bot Worker (Every 30 seconds)        │
+ └───────────────┬──────────────────────┘
+                 │
+                 ▼
+ ┌───────────────────────────────────┐
+ │ 1. Fetch Active Strategies        │
+ │    - User has delegation          │
+ │    - Strategy is active           │
+ └───────────┬───────────────────────┘
+             │
+             ▼
+ ┌───────────────────────────────────┐
+ │ 2. Calculate Current Portfolio    │
+ │    - Get token balances           │
+ │    - Fetch Pyth prices            │
+ │    - Calculate allocations        │
+ └───────────┬───────────────────────┘
+             │
+             ▼
+ ┌───────────────────────────────────┐
+ │ 3. Check if Rebalance Needed      │
+ │    - Calculate drift              │
+ │    - Check interval passed        │
+ └───────────┬───────────────────────┘
+             │
+          No │ Yes
+  ┌──────────┴──────────┐
+  │                     │
+  ▼                     ▼
+Skip         ┌──────────────────────────┐
+             │ 4. Get 0x Quotes          │
+             │    - Calculate swap       │
+             │    - Get best price       │
+             └───────────┬──────────────┘
+                         │
+                         ▼
+             ┌──────────────────────────┐
+             │ 5. Execute Rebalance      │
+             │    - Use delegation       │
+             │    - Call RebalanceExecutor│
+             │    - Verify success       │
+             └───────────┬──────────────┘
+                         │
+                         ▼
+             ┌──────────────────────────┐
+             │ 6. Update Database        │
+             │    - Log transaction      │
+             │    - Notify user          │
+             └──────────────────────────┘
+```
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Framework | NestJS 10 |
+| Language | TypeScript 5.3 |
+| Database | PostgreSQL 16 + Prisma 5.8 |
+| Cache/Queue | Redis 7 + Bull 4.12 |
+| Blockchain | Viem 2.38 + Base |
+| Oracle | Pyth Network |
+| DEX | 0x Protocol |
+| Auth | SIWE (EIP-4361) |
+
+## Deployment
+
+```bash
+# Build
+npm run build
+
+# Production mode
+NODE_ENV=production npm run start:api
+NODE_ENV=production npm run start:bot
+
+# Docker
+docker-compose up -d
+```
+
+## Security
+
+- JWT-based authentication with 7-day expiration
+- EIP-4361 (SIWE) for wallet verification
+- Bot EOA authorization on smart contracts
+- EIP-712 delegation signatures
+- Rate limiting (100 req/min)
+- Input validation with class-validator
+
+## License
 
 MIT
 
 ---
 
-Built with ❤️ using NestJS, Prisma, Viem, and Bull
+Built for automated crypto portfolio rebalancing on Base
+

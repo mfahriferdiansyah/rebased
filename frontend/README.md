@@ -1,315 +1,180 @@
-# Rebased Strategy Builder - Quick Reference
+# Rebased Frontend
 
-## 🎯 Core Concept
+Visual strategy builder for automated crypto portfolio rebalancing on Base.
 
-Build crypto portfolio strategies by connecting blocks in a flow. Each block does ONE thing.
+## Quick Start
 
----
+```bash
+# Install
+npm install
 
-## 📦 Block Types (6 Total)
+# Configure
+cp .env.example .env
+# Add your Privy App ID
 
-### 1. START
-
-**Purpose:** Entry point of every strategy  
-**Contains:** Strategy name, description  
-**Can connect to:** ASSETS, TRIGGER  
-**Use case:** "Begin building my strategy"
-
----
-
-### 2. ASSETS
-
-**Purpose:** Define which tokens + their target weights  
-**Contains:**
-
-- Token list (symbol, address, chain, name)
-- Weight for each token (must sum to 100%)
-
-**Can connect to:** CONDITION, ACTION, FILTER, END  
-**Use case:**
-
-- Simple: "60% ETH, 40% USDC" → END
-- Advanced: "70% ETH, 30% USDC" → CONDITION
-
-**UI:** Token selector + weight slider per token
-
----
-
-### 3. CONDITION
-
-**Purpose:** Check if market meets criteria (IF statement)  
-**Contains:**
-
-- **Type:** Price, Allocation Drift, Portfolio Gain/Loss, Time
-- **Params:** tokenSymbol, operator (>, <, >=, <=), value, unit
-
-**Can connect to:** ACTION, CONDITION (for chaining)  
-**Use cases:**
-
-- "IF ETH price > $5000"
-- "IF portfolio gain > 20%"
-- "IF ETH allocation drifts > 5%"
-
-**UI:** Dropdown for type, token selector, number input
-
----
-
-### 4. ACTION
-
-**Purpose:** Execute changes (THEN statement)  
-**Contains:**
-
-- **Type:** Rebalance, Shift Allocation, Take Profit, Stop Loss
-- **Params:** newWeights, targetStablecoin, percentage
-
-**Can connect to:** END, CONDITION (for ELSE)  
-**Use cases:**
-
-- "THEN shift to 50% ETH, 50% USDC"
-- "THEN take 20% profit to USDC"
-- "THEN rebalance to target weights"
-
-**UI:** Dropdown for type, weight sliders (if SHIFT_ALLOCATION)
-
----
-
-### 5. TRIGGER (Optional)
-
-**Purpose:** Define how often to check conditions  
-**Contains:**
-
-- **Type:** Time Interval, Price Change, Manual
-- **Params:** interval (seconds), priceChangeThreshold (%)
-
-**Can connect to:** ASSETS  
-**Use cases:**
-
-- "Check every 60 seconds"
-- "Check when price moves 5%"
-
-**Default:** Every 60 seconds (can skip this block)  
-**UI:** Interval slider or percentage input
-
----
-
-### 6. END
-
-**Purpose:** Terminal node, marks completion  
-**Contains:** Validation status  
-**Can connect to:** Nothing (terminal)  
-**Use case:** "Strategy is complete"
-
----
-
-## 🔗 Connection Rules
-
-```
-START → [ASSETS, TRIGGER]
-ASSETS → [CONDITION, ACTION, FILTER, END]
-CONDITION → [ACTION, CONDITION]
-ACTION → [END, CONDITION]
-TRIGGER → [ASSETS]
-FILTER → [ASSETS]
-END → []
+# Run
+npm run dev
 ```
 
----
+Access: http://localhost:5173
 
-## 📋 Strategy Patterns
+## Features
 
-### Pattern 1: Simple Rebalancing
-
-```
-START → ASSETS → END
-```
-
-**What it does:** Maintains target weights forever  
-**Example:** "Keep 60% ETH, 40% USDC"
-
----
-
-### Pattern 2: Conditional Rebalancing
-
+### Visual Strategy Builder
+Build rebalancing strategies by connecting blocks:
 ```
 START → ASSETS → CONDITION → ACTION → END
 ```
 
-**What it does:** Change weights when condition met  
-**Example:** "Start 70/30, but IF ETH > $5k THEN go 50/50"
+### Block Types
+- **START**: Entry point with strategy name
+- **ASSETS**: Define tokens and target weights (must sum to 100%)
+- **CONDITION**: Add rules (IF price > $5000)
+- **ACTION**: Execute changes (THEN shift to 50/50)
+- **END**: Complete and deploy strategy
+
+### User Flow
+
+```
+User                  Frontend                 Smart Contract
+ │                      │                           │
+ │  1. Connect Wallet   │                           │
+ │ ────────────────────>│                           │
+ │                      │  2. Check/Create          │
+ │                      │     DeleGator             │
+ │                      │ ─────────────────────────>│
+ │                      │ <─────────────────────────│
+ │                      │                           │
+ │  3. Build Strategy   │                           │
+ │ ────────────────────>│                           │
+ │                      │  4. Save to Backend       │
+ │                      │ ───────>Backend           │
+ │                      │                           │
+ │  5. Deploy Strategy  │                           │
+ │ ────────────────────>│                           │
+ │                      │  6. deployStrategy()      │
+ │                      │ ─────────────────────────>│
+ │                      │ <─────────────────────────│
+ │                      │                           │
+ │  7. Sign Delegation  │                           │
+ │ ────────────────────>│                           │
+ │                      │  8. Store Delegation      │
+ │                      │ ───────>Backend           │
+ │                      │                           │
+ │  Done! Bot monitors  │                           │
+```
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|-----------|
+| **Framework** | React 18 + Vite |
+| **Language** | TypeScript |
+| **Styling** | Tailwind CSS + shadcn/ui |
+| **State** | Zustand |
+| **Canvas** | React Flow |
+| **Wallet** | Privy + Viem |
+| **Blockchain** | Viem (Base) |
+
+## Configuration
+
+```bash
+# Privy (Required)
+VITE_PRIVY_APP_ID=your-privy-app-id
+
+# Backend API
+VITE_BACKEND_URL=http://localhost:3000
+
+# RPC URLs
+VITE_BASE_MAINNET_RPC_URL=https://mainnet.base.org
+
+# Contract Addresses (Base Mainnet)
+VITE_BASE_MAINNET_DELEGATION_MANAGER=0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3
+VITE_BASE_MAINNET_STRATEGY_REGISTRY=0x051790142C92E55C88d45469419CBC74735bDec5
+VITE_BASE_MAINNET_EXECUTOR=0xE5937713Ed44977dBBBdFF63aDab110e2A8aFF57
+```
+
+## Project Structure
+
+```
+src/
+├── components/
+│   ├── blocks/          # Strategy blocks (START, ASSETS, etc.)
+│   ├── wizard/          # Deployment wizard
+│   ├── delegation/      # Delegation management
+│   └── ui/              # shadcn/ui components
+├── hooks/
+│   ├── useDelegation.ts # Delegation signing
+│   ├── useStrategy.ts   # Strategy management
+│   └── useAuth.ts       # SIWE authentication
+├── lib/
+│   ├── api/             # Backend API clients
+│   ├── utils/           # Helpers (delegation signatures)
+│   └── chains.ts        # Chain configs
+└── store/               # Zustand stores
+```
+
+## Scripts
+
+```bash
+npm run dev          # Development server
+npm run build        # Production build
+npm run preview      # Preview production build
+npm run lint         # Lint code
+```
+
+## Deployment
+
+```bash
+# Build
+npm run build
+
+# Output: dist/
+```
+
+Deploy `dist/` folder to:
+- Vercel
+- Netlify
+- Any static hosting
+
+## Key Features
+
+### 1. Wallet Connection
+- Privy integration for easy onboarding
+- MetaMask, WalletConnect support
+- SIWE authentication
+
+### 2. Strategy Builder
+- Drag-and-drop block interface
+- Real-time validation
+- Token selector with prices
+- Weight sliders (auto-sum to 100%)
+
+### 3. Smart Account
+- Automatic DeleGator detection
+- One-click deployment
+- MetaMask Delegation Framework
+
+### 4. Delegation Signing
+- EIP-712 typed signatures
+- 1-year expiry (configurable)
+- Specific delegate (RebalanceExecutor)
+
+### 5. Real-Time Updates
+- Strategy status monitoring
+- Rebalance notifications
+- Portfolio drift tracking
+
+## Environment Support
+
+- **Base Mainnet** (Production)
+- **Base Sepolia** (Testnet)
+
+## License
+
+MIT
 
 ---
 
-### Pattern 3: Multi-Condition (IF-ELSE)
+Build automated crypto strategies visually
 
-```
-START → ASSETS → CONDITION → ACTION → CONDITION → ACTION → END
-```
-
-**What it does:** Multiple rules  
-**Example:**
-
-- IF ETH > $5k THEN 50/50
-- ELSE IF ETH < $3k THEN 80/20
-- ELSE maintain 70/30
-
----
-
-## 🎨 What Each Block Can Reference
-
-### CONDITION Block Values
-
-Can check:
-
-- **Token prices** (requires: token from ASSETS)
-- **Allocations** (requires: token from ASSETS)
-- **Portfolio value** (no dependency)
-- **Time elapsed** (no dependency)
-
-**Correlation:** Must reference tokens defined in ASSETS block
-
----
-
-### ACTION Block Values
-
-Can modify:
-
-- **Weights** (requires: tokens from ASSETS)
-- **Profit taking** (requires: target stablecoin in ASSETS)
-
-**Correlation:** Can only rebalance tokens that exist in ASSETS block
-
----
-
-## ✅ Validation Rules
-
-1. **ASSETS:** Weights must sum to 100%
-2. **CONDITION:** Token must exist in ASSETS
-3. **ACTION:** New weights must reference ASSETS tokens
-4. **Flow:** Must have exactly one START and one END
-5. **Connections:** Follow CONNECTION_RULES (see above)
-
----
-
-## 💡 Real-World Examples
-
-### Example 1: Conservative Holder
-
-```
-START
-  → ASSETS: 50% ETH, 50% USDC
-  → END
-```
-
-**Behavior:** Rebalances to 50/50 every minute (default)
-
----
-
-### Example 2: Take Profits Gradually
-
-```
-START
-  → ASSETS: 80% ETH, 20% USDC
-  → CONDITION: IF ETH price > $5000
-  → ACTION: SHIFT to 60% ETH, 40% USDC
-  → END
-```
-
-**Behavior:**
-
-- Normally maintains 80/20
-- When ETH hits $5k, shifts to 60/40
-- Locks in profits automatically
-
----
-
-### Example 3: Stop Loss Protection
-
-```
-START
-  → ASSETS: 70% ETH, 30% USDC
-  → CONDITION: IF portfolio loss > 15%
-  → ACTION: SHIFT to 30% ETH, 70% USDC
-  → END
-```
-
-**Behavior:**
-
-- Normally maintains 70/30
-- If portfolio drops 15%, goes defensive (30/70)
-- Protects against further losses
-
----
-
-### Example 4: Momentum Strategy
-
-```
-START
-  → ASSETS: 60% ETH, 40% USDC
-  → CONDITION: IF ETH gain > 20%
-  → ACTION: SHIFT to 70% ETH, 30% USDC
-  → CONDITION: IF ETH loss > 10%
-  → ACTION: SHIFT to 50% ETH, 50% USDC
-  → END
-```
-
-**Behavior:**
-
-- Starts 60/40
-- IF ETH pumps 20% → increase to 70% (ride the wave)
-- IF ETH dumps 10% → decrease to 50% (cut losses)
-- Dynamic allocation based on momentum
-
----
-
-## 🛠️ Implementation Guide
-
-### For Claude Code:
-
-```typescript
-// Use CONNECTION_RULES to validate connections
-import { canConnect, CONNECTION_RULES } from "./blockSchema";
-
-function handleConnect(source: Block, target: Block) {
-  if (!canConnect(source.type, target.type)) {
-    showError(`Cannot connect ${source.type} to ${target.type}`);
-    return false;
-  }
-  // Create connection...
-}
-
-// Show only valid next blocks in UI
-function getAvailableBlocks(currentBlock: Block): BlockType[] {
-  return CONNECTION_RULES[currentBlock.type];
-}
-
-// Validate before deployment
-function validateStrategy(blocks: Block[]): boolean {
-  // Check all blocks, sum of weights, connections, etc.
-  return allValid;
-}
-```
-
----
-
-## 🎯 Key Principles
-
-1. **ONE BLOCK = ONE PURPOSE** (don't overload blocks)
-2. **WEIGHTS IN ASSETS** (cleaner, less blocks)
-3. **LINEAR FLOW** (top to bottom, left to right)
-4. **VALIDATE EARLY** (show errors as user builds)
-5. **DEFAULTS MATTER** (60s interval, REBALANCE_TO_TARGET)
-
----
-
-## 📊 Block Correlation Summary
-
-| Block     | References         | Requires            |
-| --------- | ------------------ | ------------------- |
-| START     | Nothing            | Nothing             |
-| ASSETS    | Token list, Prices | Nothing             |
-| CONDITION | ASSETS tokens      | ASSETS block exists |
-| ACTION    | ASSETS tokens      | ASSETS block exists |
-| TRIGGER   | Nothing            | Nothing             |
-| END       | Nothing            | Valid strategy      |
-
-**Critical:** CONDITION and ACTION blocks MUST reference tokens defined in ASSETS block!
