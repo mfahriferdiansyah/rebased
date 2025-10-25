@@ -147,10 +147,15 @@ export function DeployStrategyStep({
   };
 
   const getExplorerUrl = (txHash: string) => {
-    if (chainId === 10143) {
-      return `https://testnet.monadexplorer.com/tx/${txHash}`;
+    if (chainId === 8453) {
+      // Base Mainnet
+      return `https://base.blockscout.com/tx/${txHash}`;
     } else if (chainId === 84532) {
-      return `https://sepolia.basescan.org/tx/${txHash}`;
+      // Base Sepolia
+      return `https://sepolia.base.blockscout.com/tx/${txHash}`;
+    } else if (chainId === 10143) {
+      // Monad Testnet
+      return `https://testnet.monadexplorer.com/tx/${txHash}`;
     }
     return null;
   };
@@ -227,21 +232,25 @@ export function DeployStrategyStep({
               <div className="text-green-700 text-sm">
                 Your strategy has been registered on-chain and is ready for automated execution.
               </div>
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs text-green-600 font-mono break-all">
-                  {deployedTxHash.slice(0, 10)}...{deployedTxHash.slice(-8)}
-                </span>
-                {getExplorerUrl(deployedTxHash) && (
-                  <a
-                    href={getExplorerUrl(deployedTxHash)!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-600 hover:text-green-700"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
-              </div>
+              {getExplorerUrl(deployedTxHash) ? (
+                <a
+                  href={getExplorerUrl(deployedTxHash)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 mt-2 text-green-600 hover:text-green-700 transition-colors"
+                >
+                  <span className="text-xs font-mono break-all">
+                    {deployedTxHash.slice(0, 10)}...{deployedTxHash.slice(-8)}
+                  </span>
+                  <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                </a>
+              ) : (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-green-600 font-mono break-all">
+                    {deployedTxHash.slice(0, 10)}...{deployedTxHash.slice(-8)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
